@@ -1,0 +1,10 @@
+[package]
+name = "cattery"
+description = "A GUI terminal app built on the felis terminal daemon"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
