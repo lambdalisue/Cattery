@@ -14,7 +14,7 @@ use felis_grid::ClipboardSelection;
 use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
 use felis_protocol::messages::{
-    InputMsg, Key, KeyEventKind, MouseAction, MouseButton, MouseEvent, SessionInfo,
+    GridMsg, InputMsg, Key, KeyEventKind, MouseAction, MouseButton, MouseEvent, SessionInfo,
 };
 use felis_render_core::overlay::ConfirmOverlay;
 use felis_render_core::palette::Theme;
@@ -26,7 +26,7 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::keyboard::{ModifiersState, PhysicalKey};
-use winit::window::{Window, WindowId};
+use winit::window::{UserAttentionType, Window, WindowId};
 
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
@@ -72,6 +72,8 @@ pub struct Terminal {
     pending: Option<PendingConfirm>,
     /// Whether a program's writes to the clipboard reach the system's.
     osc_52: Osc52Policy,
+    /// Whether Option composes characters rather than acting as Alt.
+    option_composes: bool,
     /// Trackpad pixels not yet a row.
     wheel_residue: f64,
     /// The rows a notch of the wheel scrolls, as the settings give.
@@ -138,6 +140,7 @@ impl Terminal {
         // winit hands keys to no input method until a window asks.
         window.set_ime_allowed(true);
         inserted::watch(&window);
+        let option_composes = option_composes(&window, settings);
         let mut terminal = Self {
             shadow: ShadowScreen::new(session.dims.rows, session.dims.cols),
             blink: BlinkClock::new(
@@ -161,6 +164,7 @@ impl Terminal {
             selection: None,
             pending: None,
             osc_52: settings.clipboard.osc_52,
+            option_composes,
             wheel_residue: 0.0,
             lines: settings.mouse.clamped_scroll_multiplier(),
             inserted_for: None,
@@ -239,6 +243,12 @@ impl Terminal {
     pub fn session_event(&mut self, event: session::Event) -> anyhow::Result<bool> {
         match event {
             session::Event::Grid(msg) => {
+                // A bell in a window out of sight asks for the user, as the
+                // platform lets an app: the Dock bounces, the taskbar flashes.
+                if matches!(msg, GridMsg::Attention { .. }) && !self.focused {
+                    self.window
+                        .request_user_attention(Some(UserAttentionType::Informational));
+                }
                 let before = (self.shadow.alt_screen(), self.shadow.viewport());
                 self.shadow.apply(&msg)?;
                 let after = (self.shadow.alt_screen(), self.shadow.viewport());
@@ -271,6 +281,7 @@ impl Terminal {
 
     /// Draw with `after` where it differs from `before`.
     pub fn restyle(&mut self, before: &EffectiveConfig, after: &EffectiveConfig) {
+        self.option_composes = option_composes(&self.window, after);
         self.osc_52 = after.clipboard.osc_52;
         self.lines = after.mouse.clamped_scroll_multiplier();
         if before.window.title_prefix != after.window.title_prefix {
@@ -439,7 +450,8 @@ impl Terminal {
             self.inserted_for = None;
             return;
         }
-        self.type_input(keys::input(&Stroke::from(event), self.modifiers));
+        let mods = keys::sent_mods(&event.logical_key, self.modifiers, self.option_composes);
+        self.type_input(keys::input(&Stroke::from(event), mods));
     }
 
     /// Send what was typed, showing the live screen first, as typing while
@@ -739,6 +751,27 @@ async fn end(socket: &Path, id: u128) -> anyhow::Result<()> {
     let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
     ops.destroy_session(format!("{id:032x}")).await?;
     Ok(())
+}
+
+/// Whether Option composes characters in `window`, as on macOS unless the
+/// settings make it Alt, which winit is then told of.
+fn option_composes(window: &Window, settings: &EffectiveConfig) -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        use winit::platform::macos::{OptionAsAlt, WindowExtMacOS as _};
+        let as_alt = settings.window.macos_option_as_alt;
+        window.set_option_as_alt(if as_alt {
+            OptionAsAlt::Both
+        } else {
+            OptionAsAlt::None
+        });
+        !as_alt
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (window, settings);
+        false
+    }
 }
 
 /// `logical` font pixels as `window`'s display draws them.

@@ -258,6 +258,22 @@ pub fn page(key: &WinitKey, mods: ModifiersState) -> Option<i32> {
     }
 }
 
+/// The modifiers a keystroke of `key` is sent with. Where Option composes
+/// characters, as on macOS unless it is set to act as Alt, the character it
+/// composed is the key, and Alt is not sent with it as well.
+pub fn sent_mods(key: &WinitKey, mods: ModifiersState, option_composes: bool) -> ModifiersState {
+    let composed = option_composes
+        && mods.alt_key()
+        && !mods.control_key()
+        && !mods.super_key()
+        && matches!(key, WinitKey::Character(_));
+    if composed {
+        mods.difference(ModifiersState::ALT)
+    } else {
+        mods
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use winit::keyboard::SmolStr;
@@ -359,6 +375,33 @@ mod tests {
         assert_eq!(page(&down, SHIFT), Some(-1));
         assert_eq!(page(&up, ModifiersState::empty()), None);
         assert_eq!(page(&character("a"), SHIFT), None);
+    }
+
+    #[test]
+    fn a_character_option_composed_is_sent_without_alt() {
+        let mods = sent_mods(&character("é"), ALT, true);
+        assert_eq!(mods, ModifiersState::empty());
+        let shifted = sent_mods(&character("É"), ALT.union(SHIFT), true);
+        assert_eq!(shifted, SHIFT);
+    }
+
+    #[test]
+    fn option_set_to_act_as_alt_sends_alt() {
+        assert_eq!(sent_mods(&character("e"), ALT, false), ALT);
+    }
+
+    #[test]
+    fn option_with_control_or_command_or_on_a_named_key_stays_alt() {
+        assert_eq!(
+            sent_mods(&character("e"), ALT.union(CONTROL), true),
+            ALT.union(CONTROL)
+        );
+        assert_eq!(
+            sent_mods(&character("e"), ALT.union(SUPER), true),
+            ALT.union(SUPER)
+        );
+        let left = WinitKey::Named(WinitNamedKey::ArrowLeft);
+        assert_eq!(sent_mods(&left, ALT, true), ALT);
     }
 
     #[test]

@@ -45,6 +45,12 @@ Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
+On macOS, Option types the characters it composes (Option-E types é), as it
+does in other apps; with the settings' `window.macos_option_as_alt`, it acts
+as Alt (Meta) instead. A program ringing the bell in a window out of sight
+calls for the user as the platform lets an app: the Dock icon bounces, or
+the taskbar entry flashes.
+
 The mouse goes to a program that asks for it — clicks, drags, motion and
 the wheel — unless Shift is held. Otherwise the wheel scrolls back through
 the session's history, as Shift with Page Up and Page Down does by half a
