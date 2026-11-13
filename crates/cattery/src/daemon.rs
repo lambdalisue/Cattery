@@ -1,7 +1,7 @@
 //! Cattery's own felis daemon: serving it, and starting it when none
 //! answers.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 
@@ -11,14 +11,35 @@ use felis_daemon::serve::DaemonCaps;
 use felis_transport::{RetryPolicy, retry_while};
 use tokio::sync::Mutex;
 
+use crate::terminfo;
+
 /// The subcommand of the `cattery` executable that serves the daemon.
 pub const SUBCOMMAND: &str = "daemon";
 
 /// Serve sessions at `socket` until the daemon is told to stop.
 pub async fn serve(socket: &Path) -> anyhow::Result<()> {
     let pool = Arc::new(Mutex::new(SessionPool::new()));
-    felis_daemon::serve_unix(socket, DaemonCaps::default(), pool).await?;
+    let caps = DaemonCaps {
+        terminfo_dir: terminfo_dir(),
+        ..DaemonCaps::default()
+    };
+    felis_daemon::serve_unix(socket, caps, pool).await?;
     Ok(())
+}
+
+/// Where sessions find the terminfo entry their `TERM` names: shipped
+/// beside the executable in a package, or compiled into Cattery's cache.
+fn terminfo_dir() -> Option<PathBuf> {
+    let exe = std::env::current_exe().and_then(std::fs::canonicalize).ok();
+    if let Some(dir) = exe.as_deref().and_then(terminfo::shipped) {
+        return Some(dir);
+    }
+    let cache = directories::ProjectDirs::from("", "", "cattery")?;
+    let dir = terminfo::prepared(cache.cache_dir(), felis_daemon::TERMINFO_SOURCE);
+    if dir.is_none() && cfg!(unix) {
+        tracing::warn!("the terminfo entry was not compiled; programs may not know the terminal");
+    }
+    dir
 }
 
 /// A window's connection to the daemon at `socket`, starting `exe` as the

@@ -104,7 +104,8 @@
                 '';
                 postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
                   wrapProgram "$out/bin/cattery" \
-                    --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}"
+                    --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}" \
+                    --prefix PATH : "${lib.makeBinPath [ pkgs.ncurses ]}"
                 '';
               }
             )
@@ -134,7 +135,9 @@
               pkgs.resvg
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ]
-            ++ linkedFor pkgs;
+            ++ linkedFor pkgs
+            # tic compiles the terminfo entry sessions use, which macOS has.
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.ncurses ];
             # So `cargo run` opens a window, as the package's wrapper does.
             LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (openedFor pkgs);
           };

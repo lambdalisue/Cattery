@@ -8,6 +8,10 @@ Starting Cattery opens one window showing a new session, which runs the
 user's login shell in the directory Cattery was started from, with
 Cattery's environment.
 
+A session's `TERM` is felis's `xterm-felis`, and its programs find that
+terminfo entry wherever Cattery runs from: shipped beside Cattery in a
+package, or compiled with the system's `tic` into Cattery's cache.
+
 The session lives in Cattery's own felis daemon. Cattery starts that daemon
 when none is running, and it keeps running after the window closes. It is
 apart from any felis daemon the user runs: a felis client does not see

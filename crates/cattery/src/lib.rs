@@ -20,5 +20,6 @@ pub mod settings;
 pub mod socket;
 pub mod store;
 pub mod terminal;
+pub mod terminfo;
 pub mod themes;
 pub mod title;

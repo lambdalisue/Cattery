@@ -149,3 +149,30 @@ async fn a_session_starts_in_the_directory_it_is_opened_in() {
     }
     panic!("the session started elsewhere: {:?}", top_row(&shadow));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_finds_the_terminfo_entry_its_term_names() {
+    let daemon = Daemon::new();
+    // The entries the test runs with, as an installed felis leaves, are left
+    // out: only the folder the daemon puts first counts, and it must be new.
+    let inherited = std::env::var("TERMINFO_DIRS").unwrap_or_default();
+    let script = format!(
+        "first=\"${{TERMINFO_DIRS%%:*}}\"; \
+         [ \"$first\" != \"{}\" ] && \
+         TERMINFO_DIRS=\"$first\" HOME=/nonexistent TERMINFO= infocmp \"$TERM\" >/dev/null \
+         && echo found; sleep 10",
+        inherited.split(':').next().unwrap_or_default(),
+    );
+    let (events, _outgoing) = attached(&daemon, &["/bin/sh", "-c", &script]).await;
+    let mut shadow = ShadowScreen::new(24, 80);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(Event::Grid(msg)) = events.recv_timeout(Duration::from_millis(100)) {
+            shadow.apply(&msg).unwrap();
+            if top_row(&shadow) == "found" {
+                return;
+            }
+        }
+    }
+    panic!("the entry was not found: {:?}", top_row(&shadow));
+}
