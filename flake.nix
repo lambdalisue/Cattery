@@ -1,6 +1,11 @@
 {
   description = "A GUI terminal app built on the felis terminal daemon";
 
+  nixConfig = {
+    extra-substituters = [ "https://cattery.cachix.org" ];
+    extra-trusted-public-keys = [ "cattery.cachix.org-1:frzBm72XcypYioWUU6wTLUlTJHQKLLN7cnaLMos4WqE=" ];
+  };
+
   inputs = {
     nixpkgs.url = "https://channels.nixos.org/nixos-unstable/nixexprs.tar.xz";
     rust-overlay = {
