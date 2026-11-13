@@ -7,11 +7,15 @@
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
+use felis_protocol::messages::PromptJump;
+
 use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 13] = [
+const COMMANDS: [(Command, &str); 15] = [
+    (Command::Prompt(PromptJump::Previous), "previous-prompt"),
+    (Command::Prompt(PromptJump::Next), "next-prompt"),
     (Command::Find, "find"),
     (Command::Sessions, "sessions"),
     (Command::Copy, "copy"),
@@ -96,6 +100,8 @@ mod platform {
     use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
     use super::id;
+    use felis_protocol::messages::PromptJump;
+
     use crate::keys::Command;
     use crate::settings::Zoom;
 
@@ -175,6 +181,17 @@ mod platform {
                     Command::Zoom(Zoom::Reset),
                     "Default Size",
                     Some((cmd, Code::Digit0)),
+                ),
+                &PredefinedMenuItem::separator(),
+                &item(
+                    Command::Prompt(PromptJump::Previous),
+                    "Previous Prompt",
+                    Some((cmd, Code::ArrowUp)),
+                ),
+                &item(
+                    Command::Prompt(PromptJump::Next),
+                    "Next Prompt",
+                    Some((cmd, Code::ArrowDown)),
                 ),
             ],
         )?;
@@ -258,6 +275,17 @@ mod platform {
                     "&Default Size",
                     Some((ctrl_shift, Code::Digit0)),
                 ),
+                &PredefinedMenuItem::separator(),
+                &item(
+                    Command::Prompt(PromptJump::Previous),
+                    "&Previous Prompt",
+                    Some((ctrl_shift, Code::KeyZ)),
+                ),
+                &item(
+                    Command::Prompt(PromptJump::Next),
+                    "&Next Prompt",
+                    Some((ctrl_shift, Code::KeyX)),
+                ),
             ],
         )?;
         let help = Submenu::with_items(
@@ -272,6 +300,7 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use felis_protocol::messages::PromptJump;
 
     #[test]
     fn every_command_is_told_by_its_menu_item() {
@@ -289,6 +318,8 @@ mod tests {
             Command::Zoom(Zoom::In),
             Command::Zoom(Zoom::Out),
             Command::Zoom(Zoom::Reset),
+            Command::Prompt(PromptJump::Previous),
+            Command::Prompt(PromptJump::Next),
         ] {
             assert_eq!(super::command(id(command)), Some(command));
         }

@@ -168,6 +168,12 @@ impl App {
                 self.open_sessions(event_loop);
                 return;
             }
+            Command::Prompt(jump) => {
+                if let Some(terminal) = self.terminal_mut(from) {
+                    terminal.jump(jump);
+                }
+                return;
+            }
             Command::Find => {
                 if let Some(terminal) = self.terminal_mut(from) {
                     terminal.find();

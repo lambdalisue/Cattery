@@ -21,6 +21,8 @@ use felis_transport::{ClientDriver, Delivery, Endpoint, Incoming, OwnedFrame};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::JoinHandle;
 
+use crate::integration;
+
 /// What the daemon tells a window about its session.
 #[derive(Debug)]
 pub enum Event {
@@ -44,7 +46,7 @@ pub enum Event {
 ///
 /// Without `cwd`, the session starts where Cattery was started from. Its
 /// environment is Cattery's either way, as a terminal opened from where
-/// Cattery was would have it.
+/// Cattery was would have it, with zsh set up to load the integration.
 pub async fn create(
     conn: &mut Connection,
     shell: &ShellConfig,
@@ -57,6 +59,16 @@ pub async fn create(
             .to_str()
             .context("the directory to open in is not UTF-8")?
             .to_owned();
+    }
+    let program = Some(args.command.clone())
+        .filter(|command| !command.is_empty())
+        .or_else(|| std::env::var("SHELL").ok());
+    if program.as_deref().is_some_and(integration::is_zsh)
+        && let Some(dir) = integration::zsh_dir()
+    {
+        let zdotdir = std::env::var("ZDOTDIR").ok();
+        args.env
+            .extend(integration::zsh_env(&dir, zdotdir.as_deref()));
     }
     Ok(conn.create_with(args).await?)
 }

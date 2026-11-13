@@ -6,7 +6,7 @@
 
 use felis_client_core::{FKey, Modifiers, NamedKey};
 use felis_protocol::limits::MAX_KEY_TEXT_BYTES;
-use felis_protocol::messages::{InputMsg, Key, KeyEvent, KeyEventKind, KeyLocation};
+use felis_protocol::messages::{InputMsg, Key, KeyEvent, KeyEventKind, KeyLocation, PromptJump};
 use felis_render_core::overlay::PreeditOverlay;
 
 use crate::settings::Zoom;
@@ -133,6 +133,8 @@ pub enum Command {
     /// End every window's session and the app.
     Quit,
     Zoom(Zoom),
+    /// Show the prompt before or after the one at the top of the window.
+    Prompt(PromptJump),
 }
 
 /// The command `key` with `mods` held is the platform's chord for.
@@ -200,8 +202,29 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 ModifiersState::CONTROL.union(ModifiersState::SHIFT),
                 Command::Paste,
             ),
+            (
+                "z",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::Prompt(PromptJump::Previous),
+            ),
+            (
+                "x",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::Prompt(PromptJump::Next),
+            ),
         ]
     };
+    if cfg!(target_os = "macos") && mods == ModifiersState::SUPER {
+        match key {
+            WinitKey::Named(WinitNamedKey::ArrowUp) => {
+                return Some(Command::Prompt(PromptJump::Previous));
+            }
+            WinitKey::Named(WinitNamedKey::ArrowDown) => {
+                return Some(Command::Prompt(PromptJump::Next));
+            }
+            _ => {}
+        }
+    }
     let WinitKey::Character(typed) = key else {
         return None;
     };
@@ -367,6 +390,28 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn prompt_chords_step_to_the_prompt_before_or_after() {
+        let (previous, next, mods) = if cfg!(target_os = "macos") {
+            (
+                WinitKey::Named(WinitNamedKey::ArrowUp),
+                WinitKey::Named(WinitNamedKey::ArrowDown),
+                SUPER,
+            )
+        } else {
+            (character("Z"), character("X"), CONTROL.union(SHIFT))
+        };
+        assert_eq!(
+            super::command(&previous, mods),
+            Some(Command::Prompt(PromptJump::Previous))
+        );
+        assert_eq!(
+            super::command(&next, mods),
+            Some(Command::Prompt(PromptJump::Next))
+        );
+        assert_eq!(super::command(&previous, ModifiersState::empty()), None);
     }
 
     #[test]

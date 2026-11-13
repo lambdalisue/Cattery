@@ -17,7 +17,7 @@ use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
 use felis_protocol::messages::{
     GridMsg, ImageMsg, ImageTarget, InputMsg, Key, KeyEventKind, MouseAction, MouseButton,
-    MouseEvent, SessionInfo, SourceRect, StreamId,
+    MouseEvent, PromptJump, SessionInfo, SourceRect, StreamId,
 };
 use felis_render_core::overlay::{ConfirmOverlay, SearchOverlay};
 use felis_render_core::palette::Theme;
@@ -413,6 +413,11 @@ impl Terminal {
         self.renderer
             .reload_font_size(physical(&self.window, self.size));
         self.fit(self.window.inner_size());
+    }
+
+    /// Show the prompt `jump` names, as the shell marked them.
+    pub fn jump(&mut self, jump: PromptJump) {
+        self.input(InputMsg::JumpPrompt { direction: jump });
     }
 
     /// Open the search bar, to search the session's history.
