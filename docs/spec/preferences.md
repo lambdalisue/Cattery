@@ -34,3 +34,10 @@ that is a link to one kept elsewhere is not written through; it is changed
 where it is kept.
 
 Changes made to the file while the window is open are shown in it.
+
+## About
+
+The window also has a page about Cattery: its version, the felis revision
+it is built with, the files its settings are kept in — each to be opened or
+shown in the file manager — and where its source, its issues and felis are.
+**About Cattery** in the menu opens the window on it.

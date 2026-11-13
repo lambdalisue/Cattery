@@ -2,6 +2,8 @@
 //! groups of rows, each a setting's name on the left and its control on the
 //! right, as macOS's own settings are laid out.
 
+use std::path::Path;
+
 use egui::{
     Align, Align2, CentralPanel, Color32, ComboBox, CornerRadius, Frame, Layout, Margin, Panel,
     Rect, RichText, ScrollArea, Sense, Slider, Stroke, TextEdit, Ui, vec2,
@@ -13,6 +15,7 @@ use winit::window::Theme;
 
 use super::look::{self, Tokens};
 use super::{Change, Shown};
+use crate::about::{self, Target};
 use crate::appearance::{Appearance, Mode};
 use crate::edit::{self, Color, Edit, Rgb};
 use crate::settings;
@@ -31,10 +34,12 @@ pub enum Page {
     Font,
     Cursor,
     Shell,
+    About,
 }
 
 impl Page {
-    const ALL: [Self; 4] = [Self::Theme, Self::Font, Self::Cursor, Self::Shell];
+    /// The pages about settings; About sits apart below them.
+    const SETTINGS: [Self; 4] = [Self::Theme, Self::Font, Self::Cursor, Self::Shell];
 
     const fn title(self) -> &'static str {
         match self {
@@ -42,6 +47,7 @@ impl Page {
             Self::Font => "Font",
             Self::Cursor => "Cursor",
             Self::Shell => "Shell",
+            Self::About => "About",
         }
     }
 }
@@ -54,6 +60,13 @@ pub struct ThemeChoice {
     pub colors: Option<Colors>,
 }
 
+/// The files the settings are kept in.
+pub struct Files<'a> {
+    pub settings: &'a Path,
+    pub appearance: &'a Path,
+    pub themes: &'a Path,
+}
+
 /// What the pages show and where they keep what is being typed.
 pub struct View<'a> {
     pub shown: &'a Shown<'a>,
@@ -61,6 +74,9 @@ pub struct View<'a> {
     pub families: &'a [String],
     pub themes: &'a [ThemeChoice],
     pub themes_dir: &'a str,
+    pub files: &'a Files<'a>,
+    /// The icon, for the About page.
+    pub icon: Option<&'a egui::TextureHandle>,
     /// The shell line as it is being typed.
     pub shell: &'a mut String,
     /// Why the last change was not saved.
@@ -106,6 +122,7 @@ pub fn show(ui: &mut Ui, page: &mut Page, mut view: View<'_>) -> Vec<Change> {
                             Page::Font => font(content, &view),
                             Page::Cursor => cursor(content, &view),
                             Page::Shell => shell(content, view.shell),
+                            Page::About => about(content, &view),
                         }
                         footer(content, &mut view);
                     });
@@ -116,33 +133,40 @@ pub fn show(ui: &mut Ui, page: &mut Page, mut view: View<'_>) -> Vec<Change> {
 
 fn sidebar(ui: &mut Ui, page: &mut Page, tokens: Tokens) {
     ui.add_space(2.0);
-    for item in Page::ALL {
-        let (rect, response) =
-            ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
-        let selected = *page == item;
-        if selected {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(6), tokens.accent);
-        } else if response.hovered() {
-            ui.painter()
-                .rect_filled(rect, CornerRadius::same(6), tokens.separator);
-        }
-        ui.painter().text(
-            rect.left_center() + vec2(10.0, 0.0),
-            Align2::LEFT_CENTER,
-            item.title(),
-            egui::FontId::proportional(13.0),
-            if selected {
-                tokens.on_accent
-            } else {
-                tokens.text
-            },
-        );
-        if response.clicked() {
-            *page = item;
-        }
-        ui.add_space(2.0);
+    for item in Page::SETTINGS {
+        sidebar_item(ui, page, item, tokens);
     }
+    // As in Kanaemi and Arto, the page about the app sits apart at the bottom.
+    ui.with_layout(Layout::bottom_up(Align::Min), |ui| {
+        sidebar_item(ui, page, Page::About, tokens);
+    });
+}
+
+fn sidebar_item(ui: &mut Ui, page: &mut Page, item: Page, tokens: Tokens) {
+    let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), 28.0), Sense::click());
+    let selected = *page == item;
+    if selected {
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(6), tokens.accent);
+    } else if response.hovered() {
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(6), tokens.separator);
+    }
+    ui.painter().text(
+        rect.left_center() + vec2(10.0, 0.0),
+        Align2::LEFT_CENTER,
+        item.title(),
+        egui::FontId::proportional(13.0),
+        if selected {
+            tokens.on_accent
+        } else {
+            tokens.text
+        },
+    );
+    if response.clicked() {
+        *page = item;
+    }
+    ui.add_space(2.0);
 }
 
 fn title(ui: &mut Ui, title: &str, tokens: Tokens) {
@@ -415,7 +439,9 @@ fn theme(content: &mut Content<'_, '_>, view: &View<'_>) {
             Some(&describe),
             |ui, changes| {
                 if ui.button("Open Folder").clicked() {
-                    changes.push(Change::OpenThemes);
+                    changes.push(Change::Open(Target::Folder(
+                        view.files.themes.to_path_buf(),
+                    )));
                 }
             },
             None,
@@ -685,6 +711,103 @@ fn cursor(content: &mut Content<'_, '_>, view: &View<'_>) {
             );
         },
     );
+}
+
+fn about(content: &mut Content<'_, '_>, view: &View<'_>) {
+    let tokens = content.tokens;
+    content.ui.vertical_centered(|ui| {
+        ui.add_space(8.0);
+        if let Some(icon) = view.icon {
+            ui.add(egui::Image::new(icon).fit_to_exact_size(vec2(96.0, 96.0)));
+        }
+        ui.add_space(4.0);
+        ui.label(RichText::new("Cattery").font(look::bold(20.0)));
+        ui.label(RichText::new(format!("Version {}", about::VERSION)).color(tokens.muted));
+        if let Some(felis) = about::felis() {
+            let short = felis.get(..7).unwrap_or(felis);
+            ui.label(RichText::new(format!("felis {short}")).color(tokens.muted));
+        }
+        ui.add_space(6.0);
+        ui.label("A GUI terminal app built on the felis terminal daemon.");
+        ui.add_space(16.0);
+    });
+    let files = view.files;
+    content.group(Some("Files"), None, |rows| {
+        for (name, file) in [
+            ("Settings", files.settings),
+            ("Appearance", files.appearance),
+        ] {
+            rows.row(
+                name,
+                Some(&file.display().to_string()),
+                |ui, changes| {
+                    if ui.button(reveal_label()).clicked() {
+                        changes.push(Change::Open(Target::Reveal(file.to_path_buf())));
+                    }
+                    if ui.button("Open").clicked() {
+                        changes.push(Change::Open(Target::Edit(file.to_path_buf())));
+                    }
+                },
+                None,
+            );
+        }
+        rows.row(
+            "Themes",
+            Some(&files.themes.display().to_string()),
+            |ui, changes| {
+                if ui.button("Open Folder").clicked() {
+                    changes.push(Change::Open(Target::Folder(files.themes.to_path_buf())));
+                }
+            },
+            None,
+        );
+    });
+    content.group(Some("Links"), None, |rows| {
+        for (name, describe, url) in [
+            (
+                "Source code",
+                "Cattery on GitHub.",
+                about::REPOSITORY.to_owned(),
+            ),
+            (
+                "Report a problem",
+                "Cattery's issues on GitHub.",
+                format!("{}/issues", about::REPOSITORY),
+            ),
+            (
+                "felis",
+                "The terminal daemon Cattery's sessions live in.",
+                "https://github.com/felis-terminal/felis".to_owned(),
+            ),
+            (
+                "Licenses",
+                "Cattery is under the MIT License; its themes are under their authors'.",
+                format!("{}/tree/main/crates/cattery/themes", about::REPOSITORY),
+            ),
+        ] {
+            rows.row(
+                name,
+                Some(describe),
+                |ui, changes| {
+                    if ui.button("Open").clicked() {
+                        changes.push(Change::Open(Target::Url(url)));
+                    }
+                },
+                None,
+            );
+        }
+    });
+}
+
+/// What the platform's file manager calls showing a file in it.
+const fn reveal_label() -> &'static str {
+    if cfg!(target_os = "macos") {
+        "Show in Finder"
+    } else if cfg!(target_os = "windows") {
+        "Show in Explorer"
+    } else {
+        "Show Folder"
+    }
 }
 
 fn shell(content: &mut Content<'_, '_>, line: &mut String) {

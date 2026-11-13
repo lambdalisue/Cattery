@@ -10,7 +10,8 @@ use winit::window::Window;
 use crate::app::Event;
 use crate::keys::Command;
 
-const COMMANDS: [(Command, &str); 5] = [
+const COMMANDS: [(Command, &str); 6] = [
+    (Command::About, "about"),
     (Command::Preferences, "preferences"),
     (Command::NewWindow, "new-window"),
     (Command::NewWindowHere, "new-window-here"),
@@ -101,6 +102,8 @@ mod platform {
             "Cattery",
             true,
             &[
+                &item(Command::About, "About Cattery", None),
+                &PredefinedMenuItem::separator(),
                 &item(
                     Command::Preferences,
                     "Preferences…",
@@ -180,7 +183,12 @@ mod platform {
                 &item(Command::Quit, "E&xit", None),
             ],
         )?;
-        Menu::with_items(&[&file])
+        let help = Submenu::with_items(
+            "&Help",
+            true,
+            &[&item(Command::About, "&About Cattery", None)],
+        )?;
+        Menu::with_items(&[&file, &help])
     }
 }
 
@@ -191,6 +199,7 @@ mod tests {
     #[test]
     fn every_command_is_told_by_its_menu_item() {
         for command in [
+            Command::About,
             Command::Preferences,
             Command::NewWindow,
             Command::NewWindowHere,

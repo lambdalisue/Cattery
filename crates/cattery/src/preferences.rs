@@ -18,7 +18,9 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Theme, Window, WindowId};
 
-use self::pages::{Page, ThemeChoice, View};
+pub use self::pages::Page;
+use self::pages::{Files, ThemeChoice, View};
+use crate::about::{self, Target};
 use crate::appearance::{self, Appearance};
 use crate::edit::{self, Edit};
 use crate::store::{self, Store};
@@ -40,8 +42,8 @@ pub struct Shown<'a> {
 pub enum Change {
     Setting(Edit),
     Appearance(Appearance),
-    /// Show the folder of the user's own themes.
-    OpenThemes,
+    /// Show a file, a folder or a page in the app that shows it.
+    Open(Target),
 }
 
 /// What a window event did to the Preferences window.
@@ -71,6 +73,8 @@ pub struct Preferences {
     shell: String,
     /// Why the last change was not saved.
     problem: Option<String>,
+    /// The icon, as the About page shows it.
+    icon: Option<egui::TextureHandle>,
 }
 
 impl Preferences {
@@ -118,6 +122,7 @@ impl Preferences {
             painter.max_texture_side(),
         );
         let themes_dir = appearance::themes_dir(&path);
+        let icon = icon_texture(&context, shown.appearance.look(shown.system));
         Ok(Self {
             window,
             context,
@@ -131,6 +136,7 @@ impl Preferences {
             families: monospace_families(),
             shell: edit::shell_line(&shown.settings.shell.command),
             problem: None,
+            icon,
         })
     }
 
@@ -140,6 +146,11 @@ impl Preferences {
 
     pub fn focus(&self) {
         self.window.focus_window();
+    }
+
+    pub fn show_page(&mut self, page: Page) {
+        self.page = page;
+        self.window.request_redraw();
     }
 
     /// Show the settings as their files now say them.
@@ -183,6 +194,11 @@ impl Preferences {
             .display()
             .to_string();
         let themes_dir = self.themes_dir.display().to_string();
+        let files = Files {
+            settings: self.store.path(),
+            appearance: &self.appearance_path,
+            themes: &self.themes_dir,
+        };
         let mut changes = Vec::new();
         let mut output = self.context.run_ui(raw, |ui| {
             changes = pages::show(
@@ -193,6 +209,8 @@ impl Preferences {
                     families: &self.families,
                     themes: &self.themes,
                     themes_dir: &themes_dir,
+                    files: &files,
+                    icon: self.icon.as_ref(),
                     shell: &mut self.shell,
                     problem: self.problem.as_deref(),
                     path: &path,
@@ -265,7 +283,7 @@ impl Preferences {
                     write_appearance(&self.appearance_path, appearance)?;
                     saved = true;
                 }
-                Change::OpenThemes => open_folder(&self.themes_dir)?,
+                Change::Open(target) => open(target)?,
             }
         }
         Ok(saved)
@@ -296,18 +314,24 @@ fn write_appearance(path: &Path, appearance: &Appearance) -> anyhow::Result<()> 
     store::replace(path, &text)
 }
 
-/// Show `dir` in the platform's file manager, making it first.
-fn open_folder(dir: &Path) -> anyhow::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    let opener = if cfg!(target_os = "macos") {
-        "open"
-    } else if cfg!(target_os = "windows") {
-        "explorer"
-    } else {
-        "xdg-open"
-    };
-    std::process::Command::new(opener).arg(dir).spawn()?;
+/// Show `target`, making a folder first if it is not there yet.
+fn open(target: &Target) -> anyhow::Result<()> {
+    if let Target::Folder(dir) = target {
+        std::fs::create_dir_all(dir)?;
+    }
+    about::command(target).spawn()?;
     Ok(())
+}
+
+/// The icon as a texture, for the About page.
+fn icon_texture(
+    context: &egui::Context,
+    look: winit::window::Theme,
+) -> Option<egui::TextureHandle> {
+    let (pixels, width, height) = crate::icon::rgba(crate::icon::large(look)).ok()?;
+    let size = [usize::try_from(width).ok()?, usize::try_from(height).ok()?];
+    let image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+    Some(context.load_texture("icon", image, egui::TextureOptions::LINEAR))
 }
 
 /// The families a grid can be drawn with, for the font list; empty when

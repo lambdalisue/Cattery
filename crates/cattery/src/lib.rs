@@ -3,6 +3,7 @@
 //! The `cattery` executable is this library's front door; the library is
 //! separate so tests can drive a daemon started as the executable starts it.
 
+pub mod about;
 pub mod app;
 pub mod appearance;
 pub mod daemon;

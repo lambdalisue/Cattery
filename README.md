@@ -16,9 +16,8 @@ app that owns its windows: it opens a new one from its own menu, has an app
 icon, and lets settings be changed in a Preferences window.
 
 > [!NOTE]
-> Cattery is at the very start of development. It opens one window on a
-> session, and its settings can be changed in a Preferences window; there is
-> no menu or icon yet.
+> Cattery is at the very start of development: windows on sessions, a menu,
+> themes, and a Preferences window, and not much more yet.
 
 ## Install
 
@@ -34,9 +33,15 @@ cargo run
 
 A window opens on your login shell. Closing it ends the session.
 
+The Shell menu opens more: **New Window** (Command-N) in your home
+directory, **New Window Here** (Command-Shift-N) where the shell in front
+last reported being. On Linux and Windows the chords are Control-Shift-N
+and Control-Alt-Shift-N.
+
 Command-comma (Control-comma on Linux and Windows) opens the Preferences
-window. The settings are kept in felis's configuration format, in
-`cattery/config.toml` under your configuration directory.
+window, where the theme, the font, the cursor and the shell are chosen.
+The settings are kept in `cattery/` under your configuration directory:
+`config.toml` in felis's format, and `appearance.toml` for the theme.
 
 ## Development
 

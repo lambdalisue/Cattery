@@ -15,7 +15,7 @@ use winit::window::{Theme, WindowId};
 use crate::appearance::{self, Appearance};
 use crate::keys::Command;
 use crate::menu::Menu;
-use crate::preferences::{Outcome, Preferences, Shown};
+use crate::preferences::{Outcome, Page, Preferences, Shown};
 use crate::terminal::{Asked, Terminal};
 use crate::{place, session, settings, themes};
 
@@ -141,6 +141,13 @@ impl App {
         let opened = match command {
             Command::Preferences => {
                 self.open_preferences(event_loop);
+                return;
+            }
+            Command::About => {
+                self.open_preferences(event_loop);
+                if let Some(preferences) = self.preferences.as_mut() {
+                    preferences.show_page(Page::About);
+                }
                 return;
             }
             Command::CloseWindow => {

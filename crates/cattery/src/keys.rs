@@ -111,6 +111,8 @@ fn modifiers(mods: ModifiersState) -> Modifiers {
 /// What the app does, rather than the session.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
+    /// The Preferences window's page about Cattery.
+    About,
     Preferences,
     /// A new window on a session in the home directory.
     NewWindow,

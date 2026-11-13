@@ -25,9 +25,9 @@ On macOS, Command-N and Command-Shift-N open them. On Linux and Windows,
 where Control-letter belongs to the terminal, Control-Shift-N and
 Control-Alt-Shift-N do.
 
-The menu offers the same, with Preferences and Close Window: the menu bar
-on macOS, and each window's menu on Windows. Linux has no menu; the
-chords work there as everywhere.
+The menu offers the same, with About Cattery, Preferences and Close
+Window: the menu bar on macOS, and each window's menu on Windows. Linux
+has no menu; the chords work there as everywhere.
 
 ## While it is open
 
