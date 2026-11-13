@@ -5,8 +5,11 @@
 
 pub mod app;
 pub mod daemon;
+pub mod edit;
 pub mod grid;
 pub mod keys;
+pub mod preferences;
 pub mod session;
 pub mod settings;
 pub mod socket;
+pub mod store;

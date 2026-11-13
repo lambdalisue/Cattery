@@ -1,0 +1,34 @@
+# Preferences
+
+The window where Cattery's settings are changed.
+
+## Opening it
+
+Command-comma on macOS, and Control-comma on Linux and Windows, in a
+session's window opens the Preferences window, or brings it to the front
+when it is open. The chord does not reach the session.
+
+## What it changes
+
+- The font: its family, from the installed families felis can draw a grid
+  with, and its size.
+- The colours: foreground, background, the sixteen palette colours, and
+  the window's opacity.
+- The cursor: its colour, and whether it blinks always, never, or as the
+  program asks.
+- The command a new session runs, typed as a shell line; left empty, a
+  session runs the login shell.
+
+Each setting can be put back to felis's default, which takes it out of the
+file.
+
+## Saving
+
+Every change is written to the settings file as it is made, and applies the
+way an edit to the file does (see `settings.md`). What else the file holds —
+comments, other settings, their order — stays as it was. A change felis's
+reader would refuse is not written, and the window says why. A settings file
+that is a link to one kept elsewhere is not written through; it is changed
+where it is kept.
+
+Changes made to the file while the window is open are shown in it.

@@ -107,6 +107,17 @@ fn modifiers(mods: ModifiersState) -> Modifiers {
     out
 }
 
+/// Whether `key` with `mods` held is the platform's chord for an app's
+/// settings: Command-comma on macOS, Control-comma elsewhere.
+pub fn opens_preferences(key: &WinitKey, mods: ModifiersState) -> bool {
+    let primary = if cfg!(target_os = "macos") {
+        ModifiersState::SUPER
+    } else {
+        ModifiersState::CONTROL
+    };
+    mods == primary && matches!(key, WinitKey::Character(c) if c == ",")
+}
+
 #[cfg(test)]
 mod tests {
     use winit::keyboard::SmolStr;
@@ -133,6 +144,34 @@ mod tests {
 
     fn character(s: &str) -> WinitKey {
         WinitKey::Character(SmolStr::new(s))
+    }
+
+    fn primary() -> ModifiersState {
+        if cfg!(target_os = "macos") {
+            ModifiersState::SUPER
+        } else {
+            ModifiersState::CONTROL
+        }
+    }
+
+    #[test]
+    fn the_platform_s_settings_chord_opens_preferences() {
+        assert!(opens_preferences(&character(","), primary()));
+    }
+
+    #[test]
+    fn a_comma_alone_or_with_more_held_is_typed() {
+        assert!(!opens_preferences(&character(","), ModifiersState::empty()));
+        assert!(!opens_preferences(
+            &character(","),
+            primary() | ModifiersState::SHIFT
+        ));
+        assert!(!opens_preferences(&character(","), ModifiersState::ALT));
+    }
+
+    #[test]
+    fn the_chord_on_another_key_is_typed() {
+        assert!(!opens_preferences(&character("."), primary()));
     }
 
     #[test]

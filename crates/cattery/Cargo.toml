@@ -11,20 +11,24 @@ publish = false
 anyhow.workspace = true
 clap.workspace = true
 directories.workspace = true
+egui.workspace = true
+egui-wgpu.workspace = true
+egui-winit.workspace = true
 felis-client-core.workspace = true
+fontdb.workspace = true
 felis-daemon.workspace = true
 felis-grid.workspace = true
 felis-protocol.workspace = true
 felis-render-core.workspace = true
 felis-render-wgpu.workspace = true
 felis-transport.workspace = true
+shell-words.workspace = true
+tempfile.workspace = true
 tokio.workspace = true
+toml_edit.workspace = true
 tracing.workspace = true
 tracing-subscriber.workspace = true
 winit.workspace = true
 
 [target.'cfg(unix)'.dependencies]
 rustix.workspace = true
-
-[dev-dependencies]
-tempfile.workspace = true

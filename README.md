@@ -10,7 +10,8 @@ icon, and lets settings be changed in a Preferences window.
 
 > [!NOTE]
 > Cattery is at the very start of development. It opens one window on a
-> session and nothing more yet: no menu, icon or Preferences window.
+> session, and its settings can be changed in a Preferences window; there is
+> no menu or icon yet.
 
 ## Install
 
@@ -25,6 +26,10 @@ cargo run
 ```
 
 A window opens on your login shell. Closing it ends the session.
+
+Command-comma (Control-comma on Linux and Windows) opens the Preferences
+window. The settings are kept in felis's configuration format, in
+`cattery/config.toml` under your configuration directory.
 
 ## Development
 

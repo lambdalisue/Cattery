@@ -23,6 +23,7 @@ use winit::keyboard::ModifiersState;
 use winit::window::{Window, WindowId};
 
 use crate::keys::{self, Stroke};
+use crate::preferences::{Outcome, Preferences};
 use crate::settings::{self, Changes};
 use crate::{daemon, grid, session};
 
@@ -83,6 +84,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         renderer: None,
         modifiers: ModifiersState::empty(),
         focused: true,
+        preferences: None,
         ended: false,
         failure: None,
     };
@@ -113,6 +115,7 @@ struct App {
     blink: BlinkClock,
     modifiers: ModifiersState,
     focused: bool,
+    preferences: Option<Preferences>,
     /// Whether the program in the session has ended on its own.
     ended: bool,
     failure: Option<anyhow::Error>,
@@ -223,6 +226,22 @@ impl App {
         }
     }
 
+    /// Bring the Preferences window up, opening it if it is not open.
+    fn open_preferences(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(preferences) = self.preferences.as_ref() {
+            preferences.focus();
+            return;
+        }
+        let Some(path) = self.settings_path.clone() else {
+            tracing::warn!("there is no settings file to change: no home directory was found");
+            return;
+        };
+        match Preferences::open(event_loop, &self.runtime, path, &self.settings) {
+            Ok(preferences) => self.preferences = Some(preferences),
+            Err(err) => tracing::warn!(?err, "the Preferences window did not open"),
+        }
+    }
+
     /// Show the cursor and start its blink over, as typing does.
     fn show_cursor(&mut self) {
         self.blink.reset(Instant::now());
@@ -328,7 +347,19 @@ impl ApplicationHandler<Event> for App {
         }
     }
 
-    fn window_event(&mut self, event_loop: &ActiveEventLoop, _: WindowId, event: WindowEvent) {
+    fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if let Some(preferences) = self
+            .preferences
+            .as_mut()
+            .filter(|preferences| preferences.id() == id)
+        {
+            match preferences.window_event(&event, &self.settings) {
+                Outcome::Nothing => {}
+                Outcome::Saved => self.reload(),
+                Outcome::Closed => self.preferences = None,
+            }
+            return;
+        }
         match event {
             WindowEvent::CloseRequested => event_loop.exit(),
             WindowEvent::Resized(size) => self.fit(size),
@@ -350,6 +381,14 @@ impl ApplicationHandler<Event> for App {
                 self.redraw();
             }
             WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::KeyboardInput { event, .. }
+                if keys::opens_preferences(&event.logical_key, self.modifiers) =>
+            {
+                // Both the press and the release stay out of the session.
+                if event.state.is_pressed() && !event.repeat {
+                    self.open_preferences(event_loop);
+                }
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 self.show_cursor();
                 self.send(OutgoingFrame::input(&keys::input(
@@ -373,7 +412,12 @@ impl ApplicationHandler<Event> for App {
                 event_loop.exit();
             }
             Event::Session(session::Event::Closed) => event_loop.exit(),
-            Event::SettingsChanged => self.reload(),
+            Event::SettingsChanged => {
+                self.reload();
+                if let Some(preferences) = self.preferences.as_mut() {
+                    preferences.reread(&self.settings);
+                }
+            }
         }
     }
 
