@@ -16,8 +16,7 @@ app that owns its windows: it opens a new one from its own menu, has an app
 icon, and lets settings be changed in a Preferences window.
 
 > [!NOTE]
-> Cattery is at the very start of development: windows on sessions, a menu,
-> themes, and a Preferences window, and not much more yet.
+> Cattery is early in development and not released yet.
 
 ## Install
 
@@ -39,7 +38,9 @@ From the development shell:
 cargo run
 ```
 
-A window opens on your login shell. Closing it ends the session.
+A window opens on your login shell. Closing it leaves the session running
+in Cattery's daemon; **Sessions…** (Command-Shift-O, or Control-Shift-O on
+Linux and Windows) lists them, to open one in a window again or to end it.
 
 The Shell menu opens more: **New Window** (Command-N) in your home
 directory, **New Window Here** (Command-Shift-N) where the shell in front
@@ -50,6 +51,13 @@ Command-comma (Control-comma on Linux and Windows) opens the Preferences
 window, where the theme, the font, the cursor and the shell are chosen.
 The settings are kept in `cattery/` under your configuration directory:
 `config.toml` in felis's format, and `appearance.toml` for the theme.
+
+Beyond that it does what a terminal app is expected to: select, copy and
+paste, find in history, zoom, links opened with Command-click
+(Control-click on Linux and Windows), images drawn with the kitty graphics
+protocol, and stepping between prompts of a shell that marks them, which
+Cattery sets zsh up to do. [docs/spec/window.md](docs/spec/window.md) has
+the details.
 
 ## Development
 
