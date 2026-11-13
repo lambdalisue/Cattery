@@ -41,6 +41,10 @@ Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
+A window is called what the program in it last called it (`OSC 0` or
+`OSC 2`), and "Cattery" until it does, behind the settings'
+`window.title_prefix`.
+
 ## Closing
 
 A window closes when the program in its session ends, and closing the

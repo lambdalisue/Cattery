@@ -24,7 +24,7 @@ use winit::window::{Window, WindowId};
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
 use crate::settings::{self, Changes};
-use crate::{daemon, grid, icon, inserted, session};
+use crate::{daemon, grid, icon, inserted, session, title};
 
 /// How long the daemon is given to end a session when its window closes.
 const ENDING: Duration = Duration::from_secs(5);
@@ -49,6 +49,8 @@ pub struct Terminal {
     /// The key an input method inserted text for, whose release the session
     /// is not sent.
     inserted_for: Option<PhysicalKey>,
+    /// The settings' `window.title_prefix`, which every title starts with.
+    title_prefix: Option<String>,
     /// Whether the program in the session has ended on its own.
     ended: bool,
 }
@@ -116,8 +118,10 @@ impl Terminal {
             modifiers: ModifiersState::empty(),
             focused: true,
             inserted_for: None,
+            title_prefix: settings.window.title_prefix.clone(),
             ended: false,
         };
+        terminal.retitle();
         terminal.send(OutgoingFrame::ordered(&colors));
         terminal.fit(size);
         Ok(terminal)
@@ -184,6 +188,9 @@ impl Terminal {
         match event {
             session::Event::Grid(msg) => {
                 self.shadow.apply(&msg)?;
+                if self.shadow.take_title_dirty().is_some() {
+                    self.retitle();
+                }
                 self.redraw();
                 Ok(true)
             }
@@ -197,6 +204,10 @@ impl Terminal {
 
     /// Draw with `after` where it differs from `before`.
     pub fn restyle(&mut self, before: &EffectiveConfig, after: &EffectiveConfig) {
+        if before.window.title_prefix != after.window.title_prefix {
+            self.title_prefix.clone_from(&after.window.title_prefix);
+            self.retitle();
+        }
         let look = settings::look(after);
         let changes = Changes::between(
             &settings::look(before),
@@ -265,6 +276,13 @@ impl Terminal {
                 tracing::warn!(?err, id, "the session was left running");
             }
         }
+    }
+
+    fn retitle(&self) {
+        self.window.set_title(&title::title(
+            self.title_prefix.as_deref(),
+            self.shadow.title(),
+        ));
     }
 
     fn type_key(&mut self, event: &winit::event::KeyEvent) {

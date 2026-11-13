@@ -21,3 +21,4 @@ pub mod socket;
 pub mod store;
 pub mod terminal;
 pub mod themes;
+pub mod title;
