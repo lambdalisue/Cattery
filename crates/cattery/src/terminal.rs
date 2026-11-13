@@ -99,6 +99,8 @@ pub struct Terminal {
     size: f32,
     /// The settings' `window.title_prefix`, which every title starts with.
     title_prefix: Option<String>,
+    /// What the window is called now.
+    titled: String,
     search: Search,
     /// The stream the search's matches arrive on, while they do.
     searching: Option<StreamId>,
@@ -192,6 +194,7 @@ impl Terminal {
             lines: settings.mouse.clamped_scroll_multiplier(),
             inserted_for: None,
             title_prefix: settings.window.title_prefix.clone(),
+            titled: String::new(),
             size: settings::font_size(settings),
             search: Search::default(),
             searching: None,
@@ -291,9 +294,9 @@ impl Terminal {
                 {
                     self.select(None);
                 }
-                if self.shadow.take_title_dirty().is_some() {
-                    self.retitle();
-                }
+                // The directory a shell reports marks no title as changed.
+                _ = self.shadow.take_title_dirty();
+                self.retitle();
                 // A program's write to the clipboard reaches the system's only
                 // where the settings let it, as in felis's own window.
                 if let Some(write) = self.shadow.take_pending_clipboard_set()
@@ -584,11 +587,18 @@ impl Terminal {
         }
     }
 
-    fn retitle(&self) {
-        self.window.set_title(&title::title(
+    fn retitle(&mut self) {
+        let home = directories::BaseDirs::new().map(|dirs| dirs.home_dir().to_owned());
+        let titled = title::title(
             self.title_prefix.as_deref(),
+            self.shadow.cwd(),
             self.shadow.title(),
-        ));
+            home.as_deref(),
+        );
+        if titled != self.titled {
+            self.window.set_title(&titled);
+            self.titled = titled;
+        }
     }
 
     fn type_key(&mut self, event: &winit::event::KeyEvent) {
