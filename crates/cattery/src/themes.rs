@@ -205,6 +205,31 @@ mod tests {
     use super::*;
     use crate::settings::CLIENT_ID;
 
+    /// The themes folder in the source, whose licences ship with Cattery.
+    fn source() -> std::path::PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("themes")
+    }
+
+    #[test]
+    fn every_shipped_theme_says_where_it_comes_from() {
+        let attributions = std::fs::read_to_string(source().join("README.md")).unwrap();
+        for (name, _) in SHIPPED {
+            assert!(attributions.contains(name), "{name} is not attributed");
+        }
+    }
+
+    #[test]
+    fn every_licence_shipped_is_one_the_attributions_name() {
+        let attributions = std::fs::read_to_string(source().join("README.md")).unwrap();
+        for entry in std::fs::read_dir(source().join("LICENSES")).unwrap() {
+            let name = entry.unwrap().file_name().into_string().unwrap();
+            assert!(
+                attributions.contains(&format!("`{name}`")),
+                "{name} is not named"
+            );
+        }
+    }
+
     const NIGHT: &str = "# a comment\n\
         palette = 0=#393b44\n\
         palette = 9=#d16983\n\

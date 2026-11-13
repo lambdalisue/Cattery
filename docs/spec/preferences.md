@@ -39,5 +39,6 @@ Changes made to the file while the window is open are shown in it.
 
 The window also has a page about Cattery: its version, the felis revision
 it is built with, the files its settings are kept in — each to be opened or
-shown in the file manager — and where its source, its issues and felis are.
+shown in the file manager — and where its source, its issues and felis
+are.
 **About Cattery** in the menu opens the window on it.

@@ -76,6 +76,7 @@
                 ./Cargo.toml
                 ./Cargo.lock
                 ./assets
+                ./LICENSE
                 ./crates
               ];
             };
@@ -93,6 +94,14 @@
               build
               // {
                 cargoArtifacts = craneLib.buildDepsOnly build;
+                # The licences of Cattery and of the themes it ships go with
+                # it, as the themes are built into it.
+                postInstall = ''
+                  licenses="$out/share/licenses/cattery"
+                  install -Dm644 LICENSE "$licenses/LICENSE"
+                  install -Dm644 crates/cattery/themes/README.md "$licenses/themes/README.md"
+                  install -Dm644 -t "$licenses/themes/LICENSES" crates/cattery/themes/LICENSES/*
+                '';
                 postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
                   wrapProgram "$out/bin/cattery" \
                     --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}"

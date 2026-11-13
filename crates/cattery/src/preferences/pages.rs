@@ -779,11 +779,6 @@ fn about(content: &mut Content<'_, '_>, view: &View<'_>) {
                 "The terminal daemon Cattery's sessions live in.",
                 "https://github.com/felis-terminal/felis".to_owned(),
             ),
-            (
-                "Licenses",
-                "Cattery is under the MIT License; its themes are under their authors'.",
-                format!("{}/tree/main/crates/cattery/themes", about::REPOSITORY),
-            ),
         ] {
             rows.row(
                 name,
