@@ -29,7 +29,8 @@ egui = { version = "0.37.0", features = ["default_fonts"] }
 egui-wgpu = { version = "0.37.0", features = ["winit"] }
 fontdb = "0.24.0"
 nucleo-matcher = "0.3.1"
-muda = "0.21.2"
+# Only macOS and Windows use the menu, so its GTK backend for Linux stays out.
+muda = { version = "0.21.2", default-features = false }
 png = "0.18.1"
 rfd = "0.18.0"
 objc2 = "0.6.5"
