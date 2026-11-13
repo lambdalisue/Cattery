@@ -11,7 +11,8 @@ use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 11] = [
+const COMMANDS: [(Command, &str); 12] = [
+    (Command::Sessions, "sessions"),
     (Command::Copy, "copy"),
     (Command::Paste, "paste"),
     (Command::Zoom(Zoom::In), "zoom-in"),
@@ -136,6 +137,11 @@ mod platform {
                     "New Window Here",
                     Some((cmd | Modifiers::SHIFT, Code::KeyN)),
                 ),
+                &item(
+                    Command::Sessions,
+                    "Sessions…",
+                    Some((cmd | Modifiers::SHIFT, Code::KeyO)),
+                ),
                 &PredefinedMenuItem::separator(),
                 &item(
                     Command::CloseWindow,
@@ -199,6 +205,11 @@ mod platform {
                     Command::NewWindowHere,
                     "New Window &Here",
                     Some((ctrl_shift | Modifiers::ALT, Code::KeyN)),
+                ),
+                &item(
+                    Command::Sessions,
+                    "&Sessions…",
+                    Some((ctrl_shift, Code::KeyO)),
                 ),
                 &PredefinedMenuItem::separator(),
                 &item(
@@ -265,6 +276,7 @@ mod tests {
             Command::NewWindow,
             Command::NewWindowHere,
             Command::CloseWindow,
+            Command::Sessions,
             Command::Copy,
             Command::Paste,
             Command::Quit,

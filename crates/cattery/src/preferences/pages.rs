@@ -13,11 +13,11 @@ use felis_render_core::palette::{DEFAULT_FG_SRGB, PALETTE_NAMES};
 use felis_render_wgpu::DEFAULT_FONT_SIZE_LOGICAL_PX;
 use winit::window::Theme;
 
-use super::look::{self, Tokens};
 use super::{Change, Shown};
 use crate::about::{self, Target};
 use crate::appearance::{Appearance, Mode};
 use crate::edit::{self, Color, Edit, Rgb};
+use crate::look::{self, Tokens};
 use crate::settings;
 use crate::themes::{Colors, Kind};
 

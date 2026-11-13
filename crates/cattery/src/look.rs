@@ -1,4 +1,4 @@
-//! How the Preferences window looks: the platform's own fonts, and colours
+//! How Cattery's own windows look — Preferences and Sessions: the platform's own fonts, and colours
 //! after the settings windows of macOS, light or dark as the system is.
 
 use std::sync::Arc;

@@ -2,7 +2,7 @@
 //! are drawn with, and the Preferences window.
 
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use felis_client_core::config::EffectiveConfig;
 use felis_client_core::config_watcher;
@@ -17,8 +17,9 @@ use crate::clipboard;
 use crate::keys::Command;
 use crate::menu::Menu;
 use crate::preferences::{Outcome, Page, Preferences, Shown};
-use crate::terminal::{Asked, Terminal};
-use crate::{place, session, settings, themes};
+use crate::sessions::{Asked as SessionsAsked, Sessions};
+use crate::terminal::{Asked, Start, Terminal};
+use crate::{place, roster, session, settings, themes};
 
 /// What reaches the app from outside winit.
 #[derive(Debug)]
@@ -71,6 +72,8 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         terminals: Vec::new(),
         focused: None,
         menu: None,
+        sessions: None,
+        listed_at: None,
         preferences: None,
         started: false,
         failure: None,
@@ -113,6 +116,9 @@ struct App {
     /// The window last focused, which a window opened "here" opens from.
     focused: Option<WindowId>,
     menu: Option<Menu>,
+    sessions: Option<Sessions>,
+    /// When the Sessions window last listed the sessions.
+    listed_at: Option<Instant>,
     preferences: Option<Preferences>,
     /// Whether the first window was opened.
     started: bool,
@@ -120,7 +126,7 @@ struct App {
 }
 
 impl App {
-    fn open(&mut self, event_loop: &ActiveEventLoop, cwd: Option<&Path>) -> anyhow::Result<()> {
+    fn open(&mut self, event_loop: &ActiveEventLoop, start: Start<'_>) -> anyhow::Result<()> {
         let terminal = Terminal::open(
             event_loop,
             &self.runtime,
@@ -128,13 +134,14 @@ impl App {
             &self.socket,
             &self.drawn,
             self.appearance.look(self.system),
-            cwd,
+            start,
         )?;
         if let Some(menu) = self.menu.as_ref() {
             menu.attach(terminal.window());
         }
         self.focused = Some(terminal.id());
         self.terminals.push(terminal);
+        self.list_sessions();
         Ok(())
     }
 
@@ -155,6 +162,10 @@ impl App {
                 if let Some(id) = from.or(self.focused) {
                     self.close(event_loop, id);
                 }
+                return;
+            }
+            Command::Sessions => {
+                self.open_sessions(event_loop);
                 return;
             }
             Command::Copy => {
@@ -184,14 +195,14 @@ impl App {
                 event_loop.exit();
                 return;
             }
-            Command::NewWindow => self.open(event_loop, place::home().as_deref()),
+            Command::NewWindow => self.open(event_loop, Start::New(place::home().as_deref())),
             Command::NewWindowHere => {
                 let here = from
                     .or(self.focused)
                     .and_then(|id| self.terminal(id))
                     .and_then(|terminal| place::here(terminal.reported_cwd()))
                     .or_else(place::home);
-                self.open(event_loop, here.as_deref())
+                self.open(event_loop, Start::New(here.as_deref()))
             }
         };
         if let Err(err) = opened {
@@ -214,13 +225,12 @@ impl App {
     /// Close the window `id`; the app ends with its last window.
     fn close(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         if let Some(at) = self.terminals.iter().position(|t| t.id() == id) {
-            self.terminals
-                .swap_remove(at)
-                .close(&self.runtime, &self.socket);
+            self.terminals.swap_remove(at).close(&self.runtime);
         }
         if self.focused == Some(id) {
             self.focused = None;
         }
+        self.list_sessions();
         if self.terminals.is_empty() {
             event_loop.exit();
         }
@@ -295,6 +305,54 @@ impl App {
         }
     }
 
+    /// Bring the Sessions window up, opening it if it is not open.
+    fn open_sessions(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(sessions) = self.sessions.as_ref() {
+            sessions.focus();
+        } else {
+            match Sessions::open(event_loop, &self.runtime) {
+                Ok(sessions) => self.sessions = Some(sessions),
+                Err(err) => tracing::warn!(?err, "the Sessions window did not open"),
+            }
+        }
+        self.list_sessions();
+    }
+
+    /// Show the Sessions window, where it is open, what the daemon keeps now.
+    fn list_sessions(&mut self) {
+        let Some(sessions) = self.sessions.as_mut() else {
+            return;
+        };
+        self.listed_at = Some(Instant::now());
+        match self.runtime.block_on(session::list(&self.socket)) {
+            Ok(listed) => sessions.show(roster::rows(&listed, place::home().as_deref())),
+            Err(err) => tracing::warn!(?err, "the sessions were not listed"),
+        }
+    }
+
+    fn sessions_asked(&mut self, event_loop: &ActiveEventLoop, asked: SessionsAsked) {
+        match asked {
+            SessionsAsked::Nothing => return,
+            SessionsAsked::Closed => {
+                self.sessions = None;
+                return;
+            }
+            SessionsAsked::Open(id) => {
+                if let Some(terminal) = self.terminals.iter().find(|t| t.session() == id) {
+                    terminal.window().focus_window();
+                } else if let Err(err) = self.open(event_loop, Start::Attach(id)) {
+                    tracing::warn!(?err, "the session was not opened");
+                }
+            }
+            SessionsAsked::End(id) => {
+                if let Err(err) = self.runtime.block_on(session::end(&self.socket, id)) {
+                    tracing::warn!(?err, "the session was not ended");
+                }
+            }
+        }
+        self.list_sessions();
+    }
+
     /// Bring the Preferences window up, opening it if it is not open.
     fn open_preferences(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(preferences) = self.preferences.as_ref() {
@@ -326,13 +384,22 @@ impl ApplicationHandler<Event> for App {
             Ok(menu) => self.menu = Some(menu),
             Err(err) => tracing::warn!(?err, "the menu was not shown"),
         }
-        if let Err(err) = self.open(event_loop, None) {
+        if let Err(err) = self.open(event_loop, Start::New(None)) {
             self.failure = Some(err);
             event_loop.exit();
         }
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        if let Some(sessions) = self
+            .sessions
+            .as_mut()
+            .filter(|sessions| sessions.id() == id)
+        {
+            let asked = sessions.window_event(&event);
+            self.sessions_asked(event_loop, asked);
+            return;
+        }
         if let Some(preferences) = self
             .preferences
             .as_mut()
@@ -398,12 +465,28 @@ impl ApplicationHandler<Event> for App {
             .iter_mut()
             .filter_map(|terminal| terminal.blink(now))
             .min();
+        // The Sessions window follows sessions that start and end on their own.
+        let relist = self
+            .listed_at
+            .filter(|_| self.sessions.is_some())
+            .map(|at| at + Duration::from_secs(2));
+        if relist.is_some_and(|at| at <= now) {
+            self.list_sessions();
+        }
+        let next = next
+            .into_iter()
+            .chain(
+                self.listed_at
+                    .filter(|_| self.sessions.is_some())
+                    .map(|at| at + Duration::from_secs(2)),
+            )
+            .min();
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
 
     fn exiting(&mut self, _: &ActiveEventLoop) {
         for terminal in self.terminals.drain(..) {
-            terminal.close(&self.runtime, &self.socket);
+            terminal.close(&self.runtime);
         }
     }
 }

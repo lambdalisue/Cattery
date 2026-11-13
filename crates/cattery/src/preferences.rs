@@ -1,16 +1,10 @@
 //! The Preferences window: Cattery's settings as controls, each change
 //! written to the file it belongs in as it is made.
 
-mod look;
 mod pages;
 
-use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
-use egui::ViewportId;
-use egui_wgpu::winit::Painter;
-use egui_wgpu::{RendererOptions, WgpuConfiguration, WgpuSetup};
 use felis_client_core::config::EffectiveConfig;
 use tokio::runtime::Runtime;
 use winit::dpi::LogicalSize;
@@ -24,6 +18,7 @@ use crate::about::{self, Target};
 use crate::appearance::{self, Appearance};
 use crate::edit::{self, Edit};
 use crate::store::{self, Store};
+use crate::surface::Surface;
 use crate::themes;
 
 /// What the Preferences window shows.
@@ -57,10 +52,7 @@ pub enum Outcome {
 }
 
 pub struct Preferences {
-    window: Arc<Window>,
-    context: egui::Context,
-    input: egui_winit::State,
-    painter: Painter,
+    surface: Surface,
     store: Store,
     appearance_path: PathBuf,
     themes_dir: PathBuf,
@@ -86,48 +78,19 @@ impl Preferences {
         path: PathBuf,
         shown: &Shown<'_>,
     ) -> anyhow::Result<Self> {
-        let window = Arc::new(
-            event_loop.create_window(
-                Window::default_attributes()
-                    .with_title("Cattery Preferences")
-                    .with_window_icon(crate::icon::window(shown.appearance.look(shown.system)))
-                    .with_inner_size(LogicalSize::new(760.0, 560.0))
-                    .with_min_inner_size(LogicalSize::new(600.0, 400.0)),
-            )?,
-        );
-        let context = egui::Context::default();
-        look::install(&context);
-        let config = WgpuConfiguration {
-            wgpu_setup: WgpuSetup::from_display_handle(event_loop.owned_display_handle()),
-            ..WgpuConfiguration::default()
-        };
-        let mut painter = runtime.block_on(Painter::new(
-            context.clone(),
-            config,
-            false,
-            RendererOptions::default(),
-        ));
-        runtime.block_on(painter.set_window(ViewportId::ROOT, Some(Arc::clone(&window))))?;
-        #[expect(
-            clippy::cast_possible_truncation,
-            reason = "a display's scale factor is a small number"
-        )]
-        let scale = window.scale_factor() as f32;
-        let input = egui_winit::State::new(
-            context.clone(),
-            ViewportId::ROOT,
-            &window,
-            Some(scale),
-            window.theme(),
-            painter.max_texture_side(),
-        );
+        let surface = Surface::open(
+            event_loop,
+            runtime,
+            Window::default_attributes()
+                .with_title("Cattery Preferences")
+                .with_window_icon(crate::icon::window(shown.appearance.look(shown.system)))
+                .with_inner_size(LogicalSize::new(760.0, 560.0))
+                .with_min_inner_size(LogicalSize::new(600.0, 400.0)),
+        )?;
         let themes_dir = appearance::themes_dir(&path);
-        let icon = icon_texture(&context, shown.appearance.look(shown.system));
+        let icon = icon_texture(surface.context(), shown.appearance.look(shown.system));
         Ok(Self {
-            window,
-            context,
-            input,
-            painter,
+            surface,
             appearance_path: appearance::path(&path),
             themes: choices(&themes_dir),
             themes_dir,
@@ -141,16 +104,16 @@ impl Preferences {
     }
 
     pub fn id(&self) -> WindowId {
-        self.window.id()
+        self.surface.id()
     }
 
     pub fn focus(&self) {
-        self.window.focus_window();
+        self.surface.focus();
     }
 
     pub fn show_page(&mut self, page: Page) {
         self.page = page;
-        self.window.request_redraw();
+        self.surface.redraw();
     }
 
     /// Show the settings as their files now say them.
@@ -159,33 +122,22 @@ impl Preferences {
             self.shell = edit::shell_line(&shown.settings.shell.command);
         }
         self.themes = choices(&self.themes_dir);
-        self.window
-            .set_window_icon(crate::icon::window(shown.appearance.look(shown.system)));
-        self.window.request_redraw();
+        self.surface
+            .set_icon(crate::icon::window(shown.appearance.look(shown.system)));
+        self.surface.redraw();
     }
 
     pub fn window_event(&mut self, event: &WindowEvent, shown: &Shown<'_>) -> Outcome {
-        match event {
-            WindowEvent::CloseRequested => return Outcome::Closed,
-            WindowEvent::Resized(size) => {
-                if let (Some(width), Some(height)) =
-                    (NonZeroU32::new(size.width), NonZeroU32::new(size.height))
-                {
-                    self.painter
-                        .on_window_resized(ViewportId::ROOT, width, height);
-                }
-            }
-            WindowEvent::RedrawRequested => return self.draw(shown),
-            _ => {}
+        if matches!(event, WindowEvent::CloseRequested) {
+            return Outcome::Closed;
         }
-        if self.input.on_window_event(&self.window, event).repaint {
-            self.window.request_redraw();
+        if self.surface.take(event) {
+            return self.draw(shown);
         }
         Outcome::Nothing
     }
 
     fn draw(&mut self, shown: &Shown<'_>) -> Outcome {
-        let raw = self.input.take_egui_input(&self.window);
         let path = self
             .store
             .path()
@@ -200,44 +152,25 @@ impl Preferences {
             themes: &self.themes_dir,
         };
         let mut changes = Vec::new();
-        let mut output = self.context.run_ui(raw, |ui| {
+        let (page, icon, shell) = (&mut self.page, self.icon.as_ref(), &mut self.shell);
+        let (families, themes, problem) = (&self.families, &self.themes, self.problem.as_deref());
+        self.surface.frame(|ui| {
             changes = pages::show(
                 ui,
-                &mut self.page,
+                page,
                 View {
                     shown,
-                    families: &self.families,
-                    themes: &self.themes,
+                    families,
+                    themes,
                     themes_dir: &themes_dir,
                     files: &files,
-                    icon: self.icon.as_ref(),
-                    shell: &mut self.shell,
-                    problem: self.problem.as_deref(),
+                    icon,
+                    shell,
+                    problem,
                     path: &path,
                 },
             );
         });
-        self.input
-            .handle_platform_output(&self.window, output.platform_output);
-        let shapes = self
-            .context
-            .tessellate(output.shapes, output.pixels_per_point);
-        self.painter.paint_and_update_textures(
-            ViewportId::ROOT,
-            output.pixels_per_point,
-            [0.0, 0.0, 0.0, 1.0],
-            &shapes,
-            &mut output.textures_delta,
-            Vec::new(),
-            &self.window,
-        );
-        if output
-            .viewport_output
-            .get(&ViewportId::ROOT)
-            .is_some_and(|viewport| viewport.repaint_delay.is_zero())
-        {
-            self.window.request_redraw();
-        }
         if changes.is_empty() {
             return Outcome::Nothing;
         }
@@ -252,7 +185,7 @@ impl Preferences {
             }
             Err(err) => {
                 self.problem = Some(format!("{err:#}"));
-                self.window.request_redraw();
+                self.surface.redraw();
                 Outcome::Nothing
             }
         }

@@ -2,14 +2,14 @@
 
 use std::path::Path;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 use felis_client_core::config::EffectiveConfig;
 use felis_client_core::config::Osc52Policy;
 use felis_client_core::confirm::{ConfirmDecision, PendingConfirm, decide_confirm_key};
 use felis_client_core::cursor_blink::BlinkClock;
 use felis_client_core::viewport::{self, ViewportIntent};
-use felis_client_core::{GridPos, Offer, OutgoingFrame, Selection, SelectionMode, ShadowScreen};
+use felis_client_core::{GridPos, OutgoingFrame, Selection, SelectionMode, ShadowScreen};
 use felis_grid::ClipboardSelection;
 use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
@@ -21,7 +21,6 @@ use felis_render_core::palette::Theme;
 use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
 use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc::UnboundedSender;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
@@ -31,11 +30,18 @@ use winit::window::{UserAttentionType, Window, WindowId};
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
 use crate::select::{self, Clicks, Paste};
+use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
 use crate::{clipboard, daemon, grid, icon, inserted, mouse, session, title};
 
-/// How long the daemon is given to end a session when its window closes.
-const ENDING: Duration = Duration::from_secs(5);
+/// Which session a window opens on.
+#[derive(Debug, Clone, Copy)]
+pub enum Start<'a> {
+    /// A new one, started in this directory or else where Cattery was.
+    New(Option<&'a Path>),
+    /// One the daemon keeps.
+    Attach(u128),
+}
 
 /// What a window event asks of the app.
 #[derive(Debug, PartialEq, Eq)]
@@ -49,8 +55,8 @@ pub struct Terminal {
     renderer: Renderer,
     shadow: ShadowScreen,
     session: SessionInfo,
-    /// Dropped when the window goes, which lets the writer drain and end.
-    outgoing: Option<UnboundedSender<OutgoingFrame>>,
+    /// Detached when the window goes.
+    link: Option<Link>,
     blink: BlinkClock,
     modifiers: ModifiersState,
     focused: bool,
@@ -101,17 +107,20 @@ impl Terminal {
         socket: &Path,
         settings: &EffectiveConfig,
         look: winit::window::Theme,
-        cwd: Option<&Path>,
+        start: Start<'_>,
     ) -> anyhow::Result<Self> {
-        let (session, outgoing, minor) = runtime.block_on(async {
+        let (session, link, minor) = runtime.block_on(async {
             let mut conn = daemon::connect(socket, &std::env::current_exe()?).await?;
-            let session = session::create(&mut conn, &settings.shell, cwd, socket).await?;
+            let session = match start {
+                Start::New(cwd) => session::create(&mut conn, &settings.shell, cwd, socket).await?,
+                Start::Attach(id) => session::attach(&mut conn, id).await?,
+            };
             let minor = conn.effective_minor;
             let id = session.id;
-            let outgoing = session::pump(conn, move |event| {
+            let link = session::pump(conn, id, move |event| {
                 proxy.send_event(Event::Session(id, event)).is_ok()
             });
-            anyhow::Ok((session, outgoing, minor))
+            anyhow::Ok((session, link, minor))
         })?;
         let drawn = settings::look(settings);
         // A surface is opaque or not for good once it is made.
@@ -151,7 +160,7 @@ impl Terminal {
             window,
             renderer,
             session,
-            outgoing: Some(outgoing),
+            link: Some(link),
             modifiers: ModifiersState::empty(),
             focused: true,
             minor,
@@ -400,18 +409,11 @@ impl Terminal {
         self.blink.next_deadline(blinks)
     }
 
-    /// Close the window, ending its session unless it ended on its own.
-    pub fn close(mut self, runtime: &Runtime, socket: &Path) {
-        self.outgoing = None;
-        // Nothing reopens a session whose window closed, so one left
-        // running would be out of reach until the daemon stops.
-        if !self.ended {
-            let id = self.session.id;
-            let ended =
-                runtime.block_on(async { tokio::time::timeout(ENDING, end(socket, id)).await? });
-            if let Err(err) = ended {
-                tracing::warn!(?err, id, "the session was left running");
-            }
+    /// Close the window, leaving its session running in the daemon, where
+    /// another window can show it again.
+    pub fn close(mut self, runtime: &Runtime) {
+        if let Some(link) = self.link.take() {
+            runtime.block_on(link.detach());
         }
     }
 
@@ -661,13 +663,11 @@ impl Terminal {
     }
 
     fn send(&self, frame: Result<OutgoingFrame, felis_transport::TransportError>) {
-        let Some(outgoing) = self.outgoing.as_ref() else {
+        let Some(link) = self.link.as_ref() else {
             return;
         };
         match frame {
-            // A closed queue means the connection ended, which the reader
-            // reports on its own.
-            Ok(frame) => _ = outgoing.send(frame),
+            Ok(frame) => link.send(frame),
             Err(err) => tracing::warn!(?err, "a message to the daemon could not be encoded"),
         }
     }
@@ -745,12 +745,6 @@ impl Terminal {
             && cursor.row < screen.rows()
             && cursor.col < screen.cols()
     }
-}
-
-async fn end(socket: &Path, id: u128) -> anyhow::Result<()> {
-    let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
-    ops.destroy_session(format!("{id:032x}")).await?;
-    Ok(())
 }
 
 /// Whether Option composes characters in `window`, as on macOS unless the

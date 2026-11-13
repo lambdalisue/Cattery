@@ -8,11 +8,10 @@ use std::sync::mpsc;
 use std::time::{Duration, Instant};
 
 use cattery::daemon;
-use cattery::session::{self, Event};
+use cattery::session::{self, Event, Link};
 use felis_client_core::config::ShellConfig;
-use felis_client_core::{Connection, Offer, OutgoingFrame, ShadowScreen};
+use felis_client_core::{Connection, Offer, ShadowScreen};
 use felis_protocol::messages::StopMode;
-use tokio::sync::mpsc::UnboundedSender;
 
 const CATTERY: &str = env!("CARGO_BIN_EXE_cattery");
 
@@ -54,10 +53,7 @@ impl Drop for Daemon {
 
 /// The session's events, and the queue to it, which holds the connection
 /// open while it lives.
-async fn attached(
-    daemon: &Daemon,
-    command: &[&str],
-) -> (mpsc::Receiver<Event>, UnboundedSender<OutgoingFrame>) {
+async fn attached(daemon: &Daemon, command: &[&str]) -> (mpsc::Receiver<Event>, Link) {
     attached_in(daemon, None, command).await
 }
 
@@ -65,17 +61,17 @@ async fn attached_in(
     daemon: &Daemon,
     cwd: Option<&Path>,
     command: &[&str],
-) -> (mpsc::Receiver<Event>, UnboundedSender<OutgoingFrame>) {
+) -> (mpsc::Receiver<Event>, Link) {
     let mut conn = daemon.connect().await;
     let shell = ShellConfig {
         command: command.iter().map(|s| (*s).to_owned()).collect(),
     };
-    session::create(&mut conn, &shell, cwd, &daemon.socket)
+    let info = session::create(&mut conn, &shell, cwd, &daemon.socket)
         .await
         .unwrap();
     let (tx, rx) = mpsc::channel();
-    let outgoing = session::pump(conn, move |event| tx.send(event).is_ok());
-    (rx, outgoing)
+    let link = session::pump(conn, info.id, move |event| tx.send(event).is_ok());
+    (rx, link)
 }
 
 fn top_row(shadow: &ShadowScreen) -> String {
@@ -175,4 +171,48 @@ async fn a_session_finds_the_terminfo_entry_its_term_names() {
         }
     }
     panic!("the entry was not found: {:?}", top_row(&shadow));
+}
+
+/// Wait until `shadow` shows `text` on its top row.
+fn wait_for(events: &mpsc::Receiver<Event>, shadow: &mut ShadowScreen, text: &str) {
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(Event::Grid(msg)) = events.recv_timeout(Duration::from_millis(100)) {
+            shadow.apply(&msg).unwrap();
+            if top_row(shadow) == text {
+                return;
+            }
+        }
+    }
+    panic!("the screen never showed {text:?}: {:?}", top_row(shadow));
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_outlives_the_window_it_was_shown_in() {
+    let daemon = Daemon::new();
+    let (events, link) = attached(&daemon, &["/bin/sh", "-c", "printf kept; sleep 30"]).await;
+    let mut shadow = ShadowScreen::new(24, 80);
+    wait_for(&events, &mut shadow, "kept");
+    let id = link.detach().await;
+
+    let listed = session::list(&daemon.socket).await.unwrap();
+    let kept = listed.iter().find(|info| info.id == id).unwrap();
+    assert!(kept.attachments.is_empty() && !kept.exited);
+
+    let mut conn = daemon.connect().await;
+    session::attach(&mut conn, id).await.unwrap();
+    let (tx, again) = mpsc::channel();
+    let _link = session::pump(conn, id, move |event| tx.send(event).is_ok());
+    let mut shadow = ShadowScreen::new(24, 80);
+    wait_for(&again, &mut shadow, "kept");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn an_ended_session_leaves_the_list() {
+    let daemon = Daemon::new();
+    let (_events, link) = attached(&daemon, &["/bin/sh", "-c", "sleep 30"]).await;
+    let id = link.detach().await;
+    session::end(&daemon.socket, id).await.unwrap();
+    let listed = session::list(&daemon.socket).await.unwrap();
+    assert!(listed.iter().all(|info| info.id != id));
 }

@@ -3,15 +3,17 @@
 //! through a queue.
 
 use std::path::Path;
+use std::time::Duration;
 
 use anyhow::Context as _;
 
 use felis_client_core::config::ShellConfig;
-use felis_client_core::{Carrier, Connection, OutgoingFrame, launch_args};
+use felis_client_core::{AttachIntent, Carrier, Connection, Offer, OutgoingFrame, launch_args};
 use felis_protocol::MessageKind;
-use felis_protocol::messages::{GridMsg, PushMsg, SessionInfo};
+use felis_protocol::messages::{GridMsg, PushMsg, SessionInfo, SessionToDaemonMsg};
 use felis_transport::{ClientDriver, Delivery, Endpoint, Incoming, OwnedFrame};
 use tokio::sync::mpsc::{self, UnboundedSender};
+use tokio::task::JoinHandle;
 
 /// What the daemon tells a window about its session.
 #[derive(Debug)]
@@ -46,13 +48,59 @@ pub async fn create(
     Ok(conn.create_with(args).await?)
 }
 
-/// Start reading `conn` into `notify` and writing what is queued on the
-/// returned sender. Reading stops when `notify` returns false; writing
-/// stops once every sender is dropped and the queue is drained.
-pub fn pump(
-    conn: Connection,
-    notify: impl Fn(Event) -> bool + Send + 'static,
-) -> UnboundedSender<OutgoingFrame> {
+/// Attach `conn` to the session `id`, whose screen then arrives whole.
+pub async fn attach(conn: &mut Connection, id: u128) -> anyhow::Result<SessionInfo> {
+    // Deliberate: the user picked it, so one whose program has ended is
+    // attached all the same, to read what it left.
+    Ok(conn.attach(id, AttachIntent::Deliberate).await?)
+}
+
+/// The sessions the daemon at `socket` keeps.
+pub async fn list(socket: &Path) -> anyhow::Result<Vec<SessionInfo>> {
+    let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
+    Ok(ops.list_sessions().await?)
+}
+
+/// End the session `id` in the daemon at `socket`, and its program with it.
+pub async fn end(socket: &Path, id: u128) -> anyhow::Result<()> {
+    let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
+    ops.destroy_session(format!("{id:032x}")).await?;
+    Ok(())
+}
+
+/// A window's way to its session: the queue to it, and the task writing
+/// what is queued.
+pub struct Link {
+    pub id: u128,
+    outgoing: UnboundedSender<OutgoingFrame>,
+    writer: JoinHandle<()>,
+}
+
+impl Link {
+    pub fn send(&self, frame: OutgoingFrame) {
+        // A closed queue means the connection ended, which the reader
+        // reports on its own.
+        _ = self.outgoing.send(frame);
+    }
+
+    /// Leave the session running without this window, once what is queued
+    /// has gone out; the session's id.
+    pub async fn detach(self) -> u128 {
+        if let Ok(frame) = OutgoingFrame::ordered(&SessionToDaemonMsg::Detach) {
+            self.send(frame);
+        }
+        drop(self.outgoing);
+        // A daemon that has stopped reading cannot keep the window waiting.
+        _ = tokio::time::timeout(Duration::from_secs(5), self.writer).await;
+        self.id
+    }
+}
+
+/// Start reading `conn`, attached to the session `id`, into `notify`, and
+/// writing what is sent on the returned link. Reading stops when `notify`
+/// returns false; writing stops once the link is detached or dropped and
+/// the queue is drained.
+pub fn pump(conn: Connection, id: u128, notify: impl Fn(Event) -> bool + Send + 'static) -> Link {
     let Connection {
         mut reader,
         mut writer,
@@ -82,7 +130,7 @@ pub fn pump(
         notify(Event::Closed);
     });
     let (outgoing, mut queued) = mpsc::unbounded_channel::<OutgoingFrame>();
-    tokio::spawn(async move {
+    let writing = tokio::spawn(async move {
         while let Some(out) = queued.recv().await {
             if let Err(err) = writer.send_checked_unflushed(out.frame()).await {
                 tracing::warn!(?err, "writing to the daemon failed");
@@ -94,7 +142,11 @@ pub fn pump(
             }
         }
     });
-    outgoing
+    Link {
+        id,
+        outgoing,
+        writer: writing,
+    }
 }
 
 enum Route {

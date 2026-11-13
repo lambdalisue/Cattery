@@ -28,12 +28,58 @@ pub struct Row {
 
 /// The rows for `sessions`, newest first, with `home` written as `~`.
 pub fn rows(sessions: &[SessionInfo], home: Option<&Path>) -> Vec<Row> {
-    todo!()
+    let mut sessions: Vec<&SessionInfo> = sessions.iter().collect();
+    sessions.sort_by_key(|session| std::cmp::Reverse(session.sequence));
+    sessions
+        .into_iter()
+        .map(|session| Row {
+            id: session.id,
+            title: session
+                .title
+                .clone()
+                .filter(|title| !title.is_empty())
+                .or_else(|| session.foreground.clone())
+                .unwrap_or_else(|| "Shell".to_owned()),
+            place: place(session, home),
+            state: if session.exited {
+                State::Ended
+            } else if session.attachments.is_empty() {
+                State::Background(Duration::from_secs(session.idle_seconds.unwrap_or(0)))
+            } else {
+                State::Shown(session.attachments.len())
+            },
+        })
+        .collect()
+}
+
+fn place(session: &SessionInfo, home: Option<&Path>) -> String {
+    let reported = session
+        .cwd
+        .as_deref()
+        .map(felis_client_core::pipe::local_cwd_from_osc7)
+        .filter(|dir| !dir.is_empty());
+    let Some(dir) = reported.or_else(|| session.spawn_cwd.clone()) else {
+        return String::new();
+    };
+    match home.and_then(|home| Path::new(&dir).strip_prefix(home).ok()) {
+        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
+        Some(rest) => format!("~/{}", rest.display()),
+        None => dir,
+    }
 }
 
 /// `state` in words.
 pub fn describe(state: State) -> String {
-    todo!()
+    match state {
+        State::Shown(1) => "Open in a window".to_owned(),
+        State::Shown(windows) => format!("Open in {windows} windows"),
+        State::Background(idle) if idle < Duration::from_secs(60) => "In the background".to_owned(),
+        State::Background(idle) if idle < Duration::from_secs(3600) => {
+            format!("In the background for {} min", idle.as_secs() / 60)
+        }
+        State::Background(idle) => format!("In the background for {} h", idle.as_secs() / 3600),
+        State::Ended => "Ended".to_owned(),
+    }
 }
 
 #[cfg(test)]
@@ -75,6 +121,7 @@ mod tests {
             id,
             attached_at: SystemTime::UNIX_EPOCH,
             input_owner: false,
+            carrier: None,
         }
     }
 
@@ -146,7 +193,10 @@ mod tests {
     fn states_are_told_in_words() {
         assert_eq!(describe(State::Shown(1)), "Open in a window");
         assert_eq!(describe(State::Shown(3)), "Open in 3 windows");
-        assert_eq!(describe(State::Background(Duration::from_secs(20))), "In the background");
+        assert_eq!(
+            describe(State::Background(Duration::from_secs(20))),
+            "In the background"
+        );
         assert_eq!(
             describe(State::Background(Duration::from_secs(5 * 60))),
             "In the background for 5 min"
