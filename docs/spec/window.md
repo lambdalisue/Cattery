@@ -6,7 +6,9 @@ What a Cattery window is and what happens to the session it shows.
 
 Starting Cattery opens one window showing a new session, which runs the
 user's login shell in the directory Cattery was started from, with
-Cattery's environment.
+Cattery's environment. On Windows no console window opens beside it
+when it is started from Explorer or the Start menu, while `cattery --version`
+still prints to the terminal it is typed in.
 
 A session's `TERM` is felis's `xterm-felis`, and its programs find that
 terminfo entry wherever Cattery runs from: shipped beside Cattery in a

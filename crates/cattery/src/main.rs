@@ -28,6 +28,8 @@ fn main() -> anyhow::Result<()> {
             tokio::runtime::Runtime::new()?.block_on(daemon::serve(&socket))
         }
         None => {
+            #[cfg(windows)]
+            leave_own_console();
             tracing_subscriber::fmt()
                 .with_env_filter(EnvFilter::from_default_env())
                 .with_writer(std::io::stderr)
@@ -37,6 +39,30 @@ fn main() -> anyhow::Result<()> {
                 settings::path(std::env::var_os(settings::OVERRIDE_VAR)),
             )
         }
+    }
+}
+
+/// Close the console Windows opened for Cattery alone, as it does for a
+/// console program started from Explorer or the Start menu; a console
+/// shared with the terminal Cattery was started from is kept.
+///
+/// Cattery stays a console program rather than a GUI one so that
+/// `cattery --version` prints to the terminal, and so that the daemon it
+/// starts has a hidden console of its own.
+#[cfg(windows)]
+fn leave_own_console() {
+    #[link(name = "kernel32")]
+    unsafe extern "system" {
+        fn GetConsoleProcessList(list: *mut u32, count: u32) -> u32;
+        fn FreeConsole() -> i32;
+    }
+    let mut attached = [0_u32; 2];
+    // SAFETY: the buffer holds as many ids as the count passed says.
+    let count = unsafe { GetConsoleProcessList(attached.as_mut_ptr(), 2) };
+    if count == 1 {
+        // SAFETY: takes nothing, and Cattery writes nothing to the console
+        // once its window is up.
+        unsafe { FreeConsole() };
     }
 }
 
