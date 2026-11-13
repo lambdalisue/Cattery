@@ -222,6 +222,10 @@ impl Terminal {
         self.session.id
     }
 
+    pub fn is_focused(&self) -> bool {
+        self.focused
+    }
+
     /// The directory the shell last reported being in, as it reported it.
     pub fn reported_cwd(&self) -> Option<&str> {
         self.shadow.cwd()

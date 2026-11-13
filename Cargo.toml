@@ -32,7 +32,10 @@ muda = "0.21.2"
 png = "0.18.1"
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange", "NSData"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange", "NSData", "NSBundle", "NSError"] }
+objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "bitflags", "block2", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNUserNotificationCenter"] }
+block2 = "0.6.2"
+notify-rust = { version = "4.19.0", default-features = false, features = ["z-with-tokio"] }
 egui-winit = "0.37.0"
 rustix = { version = "1.1.6", features = ["process"] }
 shell-words = "1.1.1"

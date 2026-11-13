@@ -57,6 +57,12 @@ as Alt (Meta) instead. A program ringing the bell in a window out of sight
 calls for the user as the platform lets an app: the Dock icon bounces, or
 the taskbar entry flashes.
 
+A notification a program posts (OSC 9, 99 or 777), in any session Cattery's
+daemon keeps, is shown as the platform shows an app's notifications, unless
+its session is the one in the window in front. On macOS this takes Cattery
+installed as an app, and the user's leave, which macOS asks for the first
+time.
+
 Images programs draw with the kitty graphics protocol are shown where they
 place them, as felis draws them.
 

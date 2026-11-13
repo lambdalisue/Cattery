@@ -271,3 +271,34 @@ async fn the_session_s_history_is_searched() {
     }
     panic!("the search never ended; {found} found");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_notification_a_program_posts_is_relayed() {
+    let daemon = Daemon::new();
+    drop(daemon.connect().await);
+    let (tx, posted) = mpsc::channel();
+    let socket = daemon.socket.clone();
+    let watching = tokio::spawn(async move {
+        cattery::notify::watch(&socket, move |each| tx.send(each).is_ok()).await;
+    });
+    // Posted once the watch has had time to subscribe.
+    let (_events, link) = attached(
+        &daemon,
+        &[
+            "/bin/sh",
+            "-c",
+            "sleep 1; printf '\\033]777;notify;Build;done\\033\\\\'; sleep 10",
+        ],
+    )
+    .await;
+    let posted = tokio::task::spawn_blocking(move || posted.recv_timeout(Duration::from_secs(10)))
+        .await
+        .unwrap()
+        .expect("no notification was relayed");
+    watching.abort();
+    assert_eq!(posted.session, link.id);
+    assert_eq!(
+        (posted.title.as_str(), posted.body.as_str()),
+        ("Build", "done")
+    );
+}

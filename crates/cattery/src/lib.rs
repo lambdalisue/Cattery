@@ -18,6 +18,7 @@ pub mod links;
 pub mod look;
 pub mod menu;
 pub mod mouse;
+pub mod notify;
 pub mod place;
 pub mod preferences;
 pub mod roster;

@@ -19,7 +19,7 @@ use crate::menu::Menu;
 use crate::preferences::{Outcome, Page, Preferences, Shown};
 use crate::sessions::{Asked as SessionsAsked, Sessions};
 use crate::terminal::{Asked, Start, Terminal};
-use crate::{place, roster, session, settings, themes};
+use crate::{notify, place, roster, session, settings, themes};
 
 /// What reaches the app from outside winit.
 #[derive(Debug)]
@@ -30,6 +30,8 @@ pub enum Event {
     SettingsChanged,
     /// A command chosen from the menu.
     Command(Command),
+    /// A program in a session posted a notification.
+    Notified(notify::Posted),
 }
 
 /// Open a window on a new session of the daemon at `socket`, drawn and
@@ -420,6 +422,13 @@ impl ApplicationHandler<Event> for App {
             self.failure = Some(err);
             event_loop.exit();
         }
+        let (socket, proxy) = (self.socket.clone(), self.proxy.clone());
+        self.runtime.spawn(async move {
+            notify::watch(&socket, |posted| {
+                proxy.send_event(Event::Notified(posted)).is_ok()
+            })
+            .await;
+        });
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
@@ -487,6 +496,16 @@ impl ApplicationHandler<Event> for App {
             }
             Event::SettingsChanged => self.reload(),
             Event::Command(command) => self.command(event_loop, command, None),
+            // The window in front already shows what its program said.
+            Event::Notified(posted) => {
+                if !self
+                    .terminals
+                    .iter()
+                    .any(|terminal| terminal.is_focused() && terminal.session() == posted.session)
+                {
+                    notify::show(&posted);
+                }
+            }
         }
     }
 
