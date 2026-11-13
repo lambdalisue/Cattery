@@ -9,7 +9,8 @@ app that owns its windows: it opens a new one from its own menu, has an app
 icon, and lets settings be changed in a Preferences window.
 
 > [!NOTE]
-> Cattery is at the very start of development and does not run yet.
+> Cattery is at the very start of development. It opens one window on a
+> session and nothing more yet: no menu, icon or Preferences window.
 
 ## Install
 
@@ -17,7 +18,13 @@ Not released yet.
 
 ## Usage
 
-Not usable yet.
+From the development shell:
+
+```sh
+cargo run
+```
+
+A window opens on your login shell. Closing it ends the session.
 
 ## Development
 
