@@ -36,6 +36,23 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
+      # What felis's font shaping links against on Linux.
+      linkedFor = pkgs: pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.fontconfig ];
+      # What winit and wgpu open at run time on Linux. They are absent from
+      # the binary's needed libraries, so an rpath does not find them.
+      openedFor =
+        pkgs:
+        pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          pkgs.vulkan-loader
+          pkgs.libGL
+          pkgs.libxkbcommon
+          pkgs.wayland
+          pkgs.libx11
+          pkgs.libxcursor
+          pkgs.libxi
+          pkgs.libxrandr
+          pkgs.libxcb
+        ];
     in
     {
       packages = forAllSystems (
@@ -62,13 +79,24 @@
               ];
             };
             strictDeps = true;
-            buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
+            nativeBuildInputs = [
+              pkgs.pkg-config
+              pkgs.makeWrapper
+            ];
+            buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ] ++ linkedFor pkgs;
             # The tests run in CI and with `just test`.
             doCheck = false;
           };
           cattery = craneLib.buildPackage (
             nix-github-release.lib.stampCargo { inherit pkgs version; } (
-              build // { cargoArtifacts = craneLib.buildDepsOnly build; }
+              build
+              // {
+                cargoArtifacts = craneLib.buildDepsOnly build;
+                postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                  wrapProgram "$out/bin/cattery" \
+                    --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}"
+                '';
+              }
             )
           );
         in
@@ -90,8 +118,13 @@
             packages = [
               rust
               pkgs.just
+              # Finds the libraries felis's font shaping links against.
+              pkgs.pkg-config
             ]
-            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
+            ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ]
+            ++ linkedFor pkgs;
+            # So `cargo run` opens a window, as the package's wrapper does.
+            LD_LIBRARY_PATH = pkgs.lib.makeLibraryPath (openedFor pkgs);
           };
         }
       );
