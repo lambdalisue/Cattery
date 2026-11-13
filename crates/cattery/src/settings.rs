@@ -228,7 +228,16 @@ mod tests {
     #[test]
     fn the_file_is_cattery_s_own_not_felis_s() {
         if let Some(path) = path(None) {
-            assert!(path.ends_with("cattery/config.toml"), "{path:?}");
+            // Windows keeps it a folder deeper, in cattery\config.
+            assert_eq!(path.file_name(), Some("config.toml".as_ref()), "{path:?}");
+            assert!(
+                path.components().any(|part| part.as_os_str() == "cattery"),
+                "{path:?}"
+            );
+            assert!(
+                !path.components().any(|part| part.as_os_str() == "felis"),
+                "{path:?}"
+            );
         }
     }
 

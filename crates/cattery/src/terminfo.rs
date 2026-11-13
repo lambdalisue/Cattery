@@ -22,20 +22,35 @@ pub fn prepared(cache: &Path, source: &str) -> Option<PathBuf> {
     if holds_entry(&dir) {
         return Some(dir);
     }
-    std::fs::create_dir_all(&dir).ok()?;
-    let file = dir.join("xterm-felis.terminfo");
+    // Compiled in a folder of its own and moved into place whole: several
+    // daemons may start at once, and one must never see, or remove, the
+    // folder another is still writing.
+    let parent = dir.parent()?;
+    std::fs::create_dir_all(parent).ok()?;
+    let scratch = tempfile::Builder::new()
+        .prefix(".compiling-")
+        .tempdir_in(parent)
+        .ok()?;
+    let file = scratch.path().join("xterm-felis.terminfo");
     std::fs::write(&file, source).ok()?;
     let compiled = Command::new(tic())
         .arg("-x")
         .arg("-o")
-        .arg(&dir)
+        .arg(scratch.path())
         .arg(&file)
         .output();
     match compiled {
-        Ok(out) if out.status.success() && holds_entry(&dir) => Some(dir),
+        Ok(out) if out.status.success() && holds_entry(scratch.path()) => {
+            let scratch = scratch.keep();
+            // Another daemon may have moved its own into place first; it
+            // holds the same entry, compiled from the same source.
+            if std::fs::rename(&scratch, &dir).is_err() {
+                _ = std::fs::remove_dir_all(&scratch);
+            }
+            holds_entry(&dir).then_some(dir)
+        }
         other => {
             tracing::debug!(?other, ?dir, "the terminfo entry was not compiled");
-            _ = std::fs::remove_dir_all(&dir);
             None
         }
     }
@@ -104,6 +119,27 @@ mod tests {
         let dir = prepared(cache.path(), felis_daemon::TERMINFO_SOURCE).unwrap();
         assert!(dir.starts_with(cache.path()));
         assert!(holds_entry(&dir));
+    }
+
+    #[test]
+    fn daemons_compiling_at_once_all_end_with_the_entry() {
+        if !tic() {
+            return;
+        }
+        let cache = tempfile::tempdir().unwrap();
+        let compiled: Vec<Option<PathBuf>> = std::thread::scope(|scope| {
+            let compiling: Vec<_> = (0..12)
+                .map(|_| scope.spawn(|| prepared(cache.path(), felis_daemon::TERMINFO_SOURCE)))
+                .collect();
+            compiling
+                .into_iter()
+                .map(|each| each.join().unwrap())
+                .collect()
+        });
+        for dir in &compiled {
+            let dir = dir.as_ref().expect("every daemon has the entry");
+            assert!(holds_entry(dir), "{dir:?}");
+        }
     }
 
     #[test]

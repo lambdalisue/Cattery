@@ -272,11 +272,21 @@ mod tests {
         assert_eq!(rows[0].title, "Shell");
     }
 
+    /// The OSC 7 report a shell in `dir` sends: `file:///C:/…` on Windows.
+    fn file_url(dir: &Path) -> String {
+        let path = dir.display().to_string().replace('\\', "/");
+        if path.starts_with('/') {
+            format!("file://{path}")
+        } else {
+            format!("file:///{path}")
+        }
+    }
+
     #[test]
     fn a_session_is_where_its_shell_said_or_else_where_it_started() {
         let dir = tempfile::tempdir().unwrap();
         let mut reported = session(1, 1);
-        reported.cwd = Some(format!("file://{}", dir.path().display()));
+        reported.cwd = Some(file_url(dir.path()));
         reported.spawn_cwd = Some("/elsewhere".to_owned());
         let mut started = session(2, 2);
         started.spawn_cwd = Some("/srv/www".to_owned());
