@@ -13,6 +13,7 @@ pub mod icon;
 pub mod inserted;
 pub mod keys;
 pub mod menu;
+pub mod mouse;
 pub mod place;
 pub mod preferences;
 pub mod session;

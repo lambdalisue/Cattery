@@ -7,18 +7,33 @@ use winit::keyboard::ModifiersState;
 
 /// The button a program is told of, where it has one.
 pub fn button(button: WinitButton) -> Option<MouseButton> {
-    todo!()
+    // Past the three and the side buttons, the encodings programs read
+    // have no code to give.
+    Some(match button {
+        WinitButton::Left => MouseButton::Left,
+        WinitButton::Middle => MouseButton::Middle,
+        WinitButton::Right => MouseButton::Right,
+        WinitButton::Back | WinitButton::Other(8) => MouseButton::Button8,
+        WinitButton::Forward | WinitButton::Other(9) => MouseButton::Button9,
+        WinitButton::Other(10) => MouseButton::Button10,
+        WinitButton::Other(11) => MouseButton::Button11,
+        WinitButton::Other(_) => return None,
+    })
 }
 
 /// The modifiers a program is told were held.
 pub fn mods(mods: ModifiersState) -> InputMods {
-    todo!()
+    let mut out = InputMods::empty();
+    out.set(InputMods::SHIFT, mods.shift_key());
+    out.set(InputMods::ALT, mods.alt_key());
+    out.set(InputMods::CTRL, mods.control_key());
+    out
 }
 
 /// Whether a click goes to the program rather than to the window: while the
 /// program asks for the mouse, unless Shift is held to select instead.
 pub fn to_program(reporting: bool, mods: ModifiersState) -> bool {
-    todo!()
+    reporting && !mods.shift_key()
 }
 
 /// What a turn of the wheel does.
@@ -47,7 +62,62 @@ pub fn wheel(
     cell_height: f64,
     residue: &mut f64,
 ) -> Wheel {
-    todo!()
+    let shift = mods.shift_key();
+    // Shift takes the wheel back for history, where there is history.
+    if reporting && !(shift && !alt_screen) {
+        let button = if notches(delta) > 0 {
+            MouseButton::WheelUp
+        } else {
+            MouseButton::WheelDown
+        };
+        return Wheel::Report(vec![button; notches(delta).unsigned_abs() as usize]);
+    }
+    if alt_screen {
+        let key: &[u8] = match (notches(delta) > 0, shift) {
+            (true, false) => b"\x1b[A",
+            (false, false) => b"\x1b[B",
+            (true, true) => b"\x1b[5~",
+            (false, true) => b"\x1b[6~",
+        };
+        return Wheel::Keys(key.repeat(notches(delta).unsigned_abs() as usize));
+    }
+    Wheel::Scroll(match delta {
+        MouseScrollDelta::LineDelta(_, y) => {
+            *residue = 0.0;
+            rounded(f64::from(y) * lines)
+        }
+        MouseScrollDelta::PixelDelta(position) => {
+            *residue += position.y;
+            let rows = (*residue / cell_height.max(1.0)).trunc();
+            *residue -= rows * cell_height.max(1.0);
+            rounded(rows)
+        }
+    })
+}
+
+/// How many notches `delta` turns, up being positive. A trackpad's pixels
+/// make one notch however far they go, so a swipe is not a flood.
+fn notches(delta: MouseScrollDelta) -> i32 {
+    let y = match delta {
+        MouseScrollDelta::LineDelta(_, y) => f64::from(y),
+        MouseScrollDelta::PixelDelta(position) => {
+            position.y.signum() * f64::from(position.y != 0.0)
+        }
+    };
+    if y == 0.0 {
+        0
+    } else {
+        rounded(y.abs()).max(1) * if y > 0.0 { 1 } else { -1 }
+    }
+}
+
+fn rounded(value: f64) -> i32 {
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "a turn of the wheel is a few rows"
+    )]
+    let rows = value.round() as i32;
+    rows
 }
 
 #[cfg(test)]
@@ -82,7 +152,10 @@ mod tests {
             | ModifiersState::ALT
             | ModifiersState::CONTROL
             | ModifiersState::SUPER;
-        assert_eq!(mods(all), InputMods::SHIFT | InputMods::ALT | InputMods::CTRL);
+        assert_eq!(
+            mods(all),
+            InputMods::SHIFT | InputMods::ALT | InputMods::CTRL
+        );
         assert_eq!(mods(NONE), InputMods::empty());
     }
 
@@ -112,7 +185,15 @@ mod tests {
             Wheel::Keys(b"\x1b[A\x1b[A".to_vec()),
         );
         assert_eq!(
-            wheel(lines(-1.0), false, true, ModifiersState::SHIFT, 3.0, 20.0, &mut 0.0),
+            wheel(
+                lines(-1.0),
+                false,
+                true,
+                ModifiersState::SHIFT,
+                3.0,
+                20.0,
+                &mut 0.0
+            ),
             Wheel::Keys(b"\x1b[6~".to_vec()),
         );
     }
@@ -132,7 +213,15 @@ mod tests {
     #[test]
     fn shift_scrolls_history_even_while_a_program_asks_for_the_mouse() {
         assert_eq!(
-            wheel(lines(1.0), true, false, ModifiersState::SHIFT, 3.0, 20.0, &mut 0.0),
+            wheel(
+                lines(1.0),
+                true,
+                false,
+                ModifiersState::SHIFT,
+                3.0,
+                20.0,
+                &mut 0.0
+            ),
             Wheel::Scroll(3),
         );
     }

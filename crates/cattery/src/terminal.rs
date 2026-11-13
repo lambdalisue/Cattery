@@ -6,17 +6,20 @@ use std::time::{Duration, Instant};
 
 use felis_client_core::config::EffectiveConfig;
 use felis_client_core::cursor_blink::BlinkClock;
+use felis_client_core::viewport::{self, ViewportIntent};
 use felis_client_core::{Offer, OutgoingFrame, ShadowScreen};
 use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
-use felis_protocol::messages::{InputMsg, SessionInfo};
+use felis_protocol::messages::{
+    InputMsg, Key, KeyEventKind, MouseAction, MouseButton, MouseEvent, SessionInfo,
+};
 use felis_render_core::palette::Theme;
-use felis_render_core::{ImageData, ImageSource};
+use felis_render_core::{ImageData, ImageSource, layout};
 use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::UnboundedSender;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
-use winit::event::{Ime, WindowEvent};
+use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::keyboard::{ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -24,7 +27,7 @@ use winit::window::{Window, WindowId};
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
 use crate::settings::{self, Changes, Zoom};
-use crate::{daemon, grid, icon, inserted, session, title};
+use crate::{daemon, grid, icon, inserted, mouse, session, title};
 
 /// How long the daemon is given to end a session when its window closes.
 const ENDING: Duration = Duration::from_secs(5);
@@ -46,6 +49,18 @@ pub struct Terminal {
     blink: BlinkClock,
     modifiers: ModifiersState,
     focused: bool,
+    /// The protocol's minor version the daemon and Cattery agreed on.
+    minor: u16,
+    /// Whether the window means to show the live screen.
+    intent: ViewportIntent,
+    /// Where the pointer is, while it is over the window.
+    pointer: Option<PhysicalPosition<f64>>,
+    /// The buttons pressed while the program was told of them.
+    grabbed: Vec<MouseButton>,
+    /// Trackpad pixels not yet a row.
+    wheel_residue: f64,
+    /// The rows a notch of the wheel scrolls, as the settings give.
+    lines: f64,
     /// The key an input method inserted text for, whose release the session
     /// is not sent.
     inserted_for: Option<PhysicalKey>,
@@ -71,14 +86,15 @@ impl Terminal {
         look: winit::window::Theme,
         cwd: Option<&Path>,
     ) -> anyhow::Result<Self> {
-        let (session, outgoing) = runtime.block_on(async {
+        let (session, outgoing, minor) = runtime.block_on(async {
             let mut conn = daemon::connect(socket, &std::env::current_exe()?).await?;
             let session = session::create(&mut conn, &settings.shell, cwd, socket).await?;
+            let minor = conn.effective_minor;
             let id = session.id;
             let outgoing = session::pump(conn, move |event| {
                 proxy.send_event(Event::Session(id, event)).is_ok()
             });
-            anyhow::Ok((session, outgoing))
+            anyhow::Ok((session, outgoing, minor))
         })?;
         let drawn = settings::look(settings);
         // A surface is opaque or not for good once it is made.
@@ -120,6 +136,12 @@ impl Terminal {
             outgoing: Some(outgoing),
             modifiers: ModifiersState::empty(),
             focused: true,
+            minor,
+            intent: ViewportIntent::default(),
+            pointer: None,
+            grabbed: Vec::new(),
+            wheel_residue: 0.0,
+            lines: settings.mouse.clamped_scroll_multiplier(),
             inserted_for: None,
             title_prefix: settings.window.title_prefix.clone(),
             size: settings::font_size(settings),
@@ -181,6 +203,10 @@ impl Terminal {
                 self.type_key(&event);
             }
             WindowEvent::Ime(ime) => self.compose(&ime),
+            WindowEvent::CursorMoved { position, .. } => self.point(position),
+            WindowEvent::CursorLeft { .. } => self.pointer = None,
+            WindowEvent::MouseInput { state, button, .. } => self.press(state, button),
+            WindowEvent::MouseWheel { delta, .. } => self.turn_wheel(delta, self.lines),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
@@ -208,6 +234,7 @@ impl Terminal {
 
     /// Draw with `after` where it differs from `before`.
     pub fn restyle(&mut self, before: &EffectiveConfig, after: &EffectiveConfig) {
+        self.lines = after.mouse.clamped_scroll_multiplier();
         if before.window.title_prefix != after.window.title_prefix {
             self.title_prefix.clone_from(&after.window.title_prefix);
             self.retitle();
@@ -309,11 +336,18 @@ impl Terminal {
     fn type_key(&mut self, event: &winit::event::KeyEvent) {
         self.show_cursor();
         if event.state.is_pressed() {
+            if let Some(direction) = keys::page(&event.logical_key, self.modifiers)
+                && !self.shadow.alt_screen()
+            {
+                let half = i32::from(self.shadow.screen().rows() / 2).max(1);
+                self.scroll(direction * half);
+                return;
+            }
             let inserted = inserted::take();
             if let Some(input) = keys::inserted_instead(inserted.as_deref(), event.text.as_deref())
             {
                 self.inserted_for = Some(event.physical_key);
-                self.send(OutgoingFrame::input(&input));
+                self.type_input(input);
                 return;
             }
         } else if self.inserted_for == Some(event.physical_key) {
@@ -321,10 +355,147 @@ impl Terminal {
             self.inserted_for = None;
             return;
         }
-        self.send(OutgoingFrame::input(&keys::input(
-            &Stroke::from(event),
+        self.type_input(keys::input(&Stroke::from(event), self.modifiers));
+    }
+
+    /// Send what was typed, showing the live screen first, as typing while
+    /// reading history returns to the prompt in other terminals. A key's
+    /// release, or a bare modifier, leaves the view where it is.
+    fn type_input(&mut self, input: InputMsg) {
+        let typed = match &input {
+            InputMsg::Key(event) => {
+                event.kind != KeyEventKind::Release
+                    && (event.key != Key::Other || event.text.is_some())
+            }
+            _ => true,
+        };
+        if typed && !self.intent.is_live(self.shadow.viewport()) {
+            self.input(InputMsg::Viewport {
+                lines_from_bottom: 0,
+                anchor: None,
+            });
+        }
+        self.input(input);
+    }
+
+    /// Scroll the view `rows` into history, or out of it when negative.
+    fn scroll(&mut self, rows: i32) {
+        // The daemon keeps the alternate screen live; a step it ignores
+        // would leave the window thinking it is reading history.
+        if self.shadow.alt_screen() {
+            return;
+        }
+        let max = self
+            .shadow
+            .viewport_max()
+            .saturating_sub(u32::from(self.shadow.screen().rows()));
+        if let Some(step) = viewport::step_request(
+            rows,
+            self.minor,
+            self.shadow.viewport(),
+            self.shadow.viewport_anchor(),
+            max,
+        ) {
+            self.input(step);
+        }
+    }
+
+    fn input(&mut self, input: InputMsg) {
+        self.intent.note(&input);
+        self.send(OutgoingFrame::input(&input));
+    }
+
+    /// The cell under the pointer, and its pixel for programs that ask in
+    /// pixels.
+    fn pointed(&self) -> Option<((u16, u16), (u16, u16))> {
+        let position = self.pointer?;
+        let cell = self.renderer.cell_metrics();
+        let origin: [f32; 2] = self.renderer.content_origin_px().into();
+        let screen = self.shadow.screen();
+        let at = [position.x, position.y];
+        Some((
+            layout::cell_at(
+                at,
+                origin,
+                [cell.width, cell.height],
+                screen.rows(),
+                screen.cols(),
+            ),
+            layout::report_pixel(at, origin),
+        ))
+    }
+
+    fn report(&mut self, button: Option<MouseButton>, action: MouseAction) {
+        let Some(((row, col), (px, py))) = self.pointed() else {
+            return;
+        };
+        self.input(InputMsg::Mouse(MouseEvent {
+            button,
+            action,
+            mods: mouse::mods(self.modifiers),
+            x: col + 1,
+            y: row + 1,
+            px,
+            py,
+        }));
+    }
+
+    fn press(&mut self, state: ElementState, button: winit::event::MouseButton) {
+        let Some(button) = mouse::button(button) else {
+            return;
+        };
+        match state {
+            ElementState::Pressed => {
+                if mouse::to_program(self.shadow.mouse_protocol_active(), self.modifiers) {
+                    self.grabbed.push(button);
+                    self.report(Some(button), MouseAction::Press);
+                }
+            }
+            // A release follows its press: to the program if it was told of
+            // the press, whatever has changed since.
+            ElementState::Released => {
+                if let Some(at) = self.grabbed.iter().position(|held| *held == button) {
+                    self.grabbed.remove(at);
+                    self.report(Some(button), MouseAction::Release);
+                }
+            }
+        }
+    }
+
+    fn point(&mut self, position: PhysicalPosition<f64>) {
+        let before = self.pointed().map(|(cell, _)| cell);
+        self.pointer = Some(position);
+        let after = self.pointed().map(|(cell, _)| cell);
+        // Programs are told of motion a cell at a time.
+        if before == after || !self.shadow.mouse_protocol_active() {
+            return;
+        }
+        match self.grabbed.last().copied() {
+            Some(button) => self.report(Some(button), MouseAction::Drag),
+            None if !self.modifiers.shift_key() => self.report(None, MouseAction::Motion),
+            None => {}
+        }
+    }
+
+    fn turn_wheel(&mut self, delta: MouseScrollDelta, lines: f64) {
+        let cell = f64::from(self.renderer.cell_metrics().height);
+        match mouse::wheel(
+            delta,
+            self.shadow.mouse_protocol_active(),
+            self.shadow.alt_screen(),
             self.modifiers,
-        )));
+            lines,
+            cell,
+            &mut self.wheel_residue,
+        ) {
+            mouse::Wheel::Report(buttons) => {
+                for button in buttons {
+                    self.report(Some(button), MouseAction::Press);
+                }
+            }
+            mouse::Wheel::Keys(keys) => self.input(InputMsg::KeyBytes(keys)),
+            mouse::Wheel::Scroll(rows) => self.scroll(rows),
+        }
     }
 
     /// Resize the session to the cells the window now holds.
@@ -406,7 +577,7 @@ impl Terminal {
     fn compose(&mut self, ime: &Ime) {
         if let Some(input) = keys::committed(ime) {
             self.show_cursor();
-            self.send(OutgoingFrame::input(&input));
+            self.type_input(input);
         }
         let cursor = self.shadow.screen().cursor();
         self.renderer

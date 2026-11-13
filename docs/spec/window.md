@@ -45,6 +45,12 @@ Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
+The mouse goes to a program that asks for it — clicks, drags, motion and
+the wheel — unless Shift is held. Otherwise the wheel scrolls back through
+the session's history, as Shift with Page Up and Page Down does by half a
+screen, and on the alternate screen it sends a pager the arrow keys (the
+page keys with Shift). Typing returns the view to the live screen.
+
 A window's text grows and shrinks a pixel at a time, within the sizes
 felis draws, and returns to the size the settings give: Command with `=`,
 `-` and `0` on macOS, Control-Shift with them on Linux and Windows, or the

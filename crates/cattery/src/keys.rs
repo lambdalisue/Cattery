@@ -229,6 +229,19 @@ pub fn inserted_instead(inserted: Option<&str>, typed: Option<&str>) -> Option<I
     Some(InputMsg::KeyBytes(inserted.as_bytes().to_vec()))
 }
 
+/// Which way Shift with Page Up or Page Down scrolls history by half a
+/// screen: up into it being positive.
+pub fn page(key: &WinitKey, mods: ModifiersState) -> Option<i32> {
+    if mods != ModifiersState::SHIFT {
+        return None;
+    }
+    match key {
+        WinitKey::Named(WinitNamedKey::PageUp) => Some(1),
+        WinitKey::Named(WinitNamedKey::PageDown) => Some(-1),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use winit::keyboard::SmolStr;
@@ -316,6 +329,16 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[test]
+    fn shift_with_the_page_keys_pages_through_history() {
+        let up = WinitKey::Named(WinitNamedKey::PageUp);
+        let down = WinitKey::Named(WinitNamedKey::PageDown);
+        assert_eq!(page(&up, SHIFT), Some(1));
+        assert_eq!(page(&down, SHIFT), Some(-1));
+        assert_eq!(page(&up, ModifiersState::empty()), None);
+        assert_eq!(page(&character("a"), SHIFT), None);
     }
 
     #[test]
