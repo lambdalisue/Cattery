@@ -51,6 +51,9 @@ as Alt (Meta) instead. A program ringing the bell in a window out of sight
 calls for the user as the platform lets an app: the Dock icon bounces, or
 the taskbar entry flashes.
 
+Images programs draw with the kitty graphics protocol are shown where they
+place them, as felis draws them.
+
 The mouse goes to a program that asks for it — clicks, drags, motion and
 the wheel — unless Shift is held. Otherwise the wheel scrolls back through
 the session's history, as Shift with Page Up and Page Down does by half a

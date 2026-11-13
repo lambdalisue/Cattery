@@ -9,12 +9,15 @@ use felis_client_core::config::Osc52Policy;
 use felis_client_core::confirm::{ConfirmDecision, PendingConfirm, decide_confirm_key};
 use felis_client_core::cursor_blink::BlinkClock;
 use felis_client_core::viewport::{self, ViewportIntent};
-use felis_client_core::{GridPos, OutgoingFrame, Selection, SelectionMode, ShadowScreen};
+use felis_client_core::{
+    GridPos, ImageShadow, OutgoingFrame, Selection, SelectionMode, ShadowScreen,
+};
 use felis_grid::ClipboardSelection;
 use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
 use felis_protocol::messages::{
-    GridMsg, InputMsg, Key, KeyEventKind, MouseAction, MouseButton, MouseEvent, SessionInfo,
+    GridMsg, ImageMsg, ImageTarget, InputMsg, Key, KeyEventKind, MouseAction, MouseButton,
+    MouseEvent, SessionInfo, SourceRect,
 };
 use felis_render_core::overlay::ConfirmOverlay;
 use felis_render_core::palette::Theme;
@@ -92,6 +95,9 @@ pub struct Terminal {
     size: f32,
     /// The settings' `window.title_prefix`, which every title starts with.
     title_prefix: Option<String>,
+    /// The images the session's programs drew, and where they go on screen.
+    images: ImageShadow,
+    layout: ImageLayout,
     /// Whether the program in the session has ended on its own.
     ended: bool,
 }
@@ -179,6 +185,8 @@ impl Terminal {
             inserted_for: None,
             title_prefix: settings.window.title_prefix.clone(),
             size: settings::font_size(settings),
+            images: ImageShadow::new(),
+            layout: ImageLayout::new(),
             ended: false,
         };
         terminal.retitle();
@@ -278,6 +286,22 @@ impl Terminal {
                     clipboard::write(&String::from_utf8_lossy(&write.data));
                 }
                 self.redraw();
+                Ok(true)
+            }
+            session::Event::Image(msg) => {
+                self.images.apply(&msg)?;
+                // A part of an image still arriving changes nothing drawn yet.
+                let arriving = matches!(
+                    msg,
+                    ImageMsg::Chunk { .. }
+                        | ImageMsg::Header {
+                            target: ImageTarget::Frame { .. } | ImageTarget::Region { .. },
+                            ..
+                        }
+                );
+                if !arriving {
+                    self.redraw();
+                }
                 Ok(true)
             }
             session::Event::Exited => {
@@ -687,11 +711,21 @@ impl Terminal {
         if self.shadow.is_rehydrating() {
             return;
         }
+        let dirty = self.images.take_dirty_images();
+        let cell = self.renderer.cell_metrics();
+        #[expect(clippy::cast_precision_loss, reason = "a cell is a few dozen pixels")]
+        let cell = (cell.width as f32, cell.height as f32);
+        self.images.layout_into(
+            &mut self.layout,
+            self.shadow.screen(),
+            cell,
+            self.shadow.viewport(),
+        );
         let drawn = self.renderer.render(
             self.shadow.screen(),
-            &[],
-            &NoImages,
-            &ImageLayout::new(),
+            &dirty,
+            &Images(&self.images),
+            &self.layout,
             self.shadow.viewport(),
             self.shadow.viewport_max(),
         );
@@ -778,11 +812,23 @@ fn physical(window: &Window, logical: f32) -> f32 {
     logical * scale
 }
 
-/// Images are not shown yet.
-struct NoImages;
+/// The images a session's programs drew, as the renderer takes them: the
+/// trait is the renderer's and the images client-core's.
+struct Images<'a>(&'a ImageShadow);
 
-impl ImageSource for NoImages {
-    fn image_data(&self, _: ImageId) -> Option<ImageData<'_>> {
-        None
+impl ImageSource for Images<'_> {
+    fn image_data(&self, id: ImageId) -> Option<ImageData<'_>> {
+        let image = self.0.image(id).filter(|image| image.is_drawable())?;
+        Some(ImageData {
+            width: image.width,
+            height: image.height,
+            format: image.format,
+            pixels: image.pixels(),
+            generation: image.generation(),
+        })
+    }
+
+    fn edits_since(&self, id: ImageId, generation: u64, out: &mut Vec<SourceRect>) -> bool {
+        self.0.edits_since(id, generation, out)
     }
 }

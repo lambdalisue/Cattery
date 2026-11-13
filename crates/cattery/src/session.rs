@@ -10,7 +10,7 @@ use anyhow::Context as _;
 use felis_client_core::config::ShellConfig;
 use felis_client_core::{AttachIntent, Carrier, Connection, Offer, OutgoingFrame, launch_args};
 use felis_protocol::MessageKind;
-use felis_protocol::messages::{GridMsg, PushMsg, SessionInfo, SessionToDaemonMsg};
+use felis_protocol::messages::{GridMsg, ImageMsg, PushMsg, SessionInfo, SessionToDaemonMsg};
 use felis_transport::{ClientDriver, Delivery, Endpoint, Incoming, OwnedFrame};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::JoinHandle;
@@ -20,6 +20,8 @@ use tokio::task::JoinHandle;
 pub enum Event {
     /// A change to the session's screen.
     Grid(GridMsg),
+    /// An image a program drew, or a change to one.
+    Image(ImageMsg),
     /// The program in the session ended.
     Exited,
     /// The connection to the daemon ended.
@@ -179,6 +181,14 @@ fn route(driver: &mut ClientDriver, frame: &OwnedFrame) -> Route {
                 Route::Stop
             }
         },
+        MessageKind::Image => match driver.decode::<ImageMsg>(&payload) {
+            Ok(Delivery::Deliver(delivered)) => Route::Event(Event::Image(delivered.msg)),
+            Ok(_) => Route::Skip,
+            Err(err) => {
+                tracing::warn!(?err, "an image from the daemon was refused");
+                Route::Stop
+            }
+        },
         MessageKind::Push => match driver.decode::<PushMsg>(&payload) {
             Ok(Delivery::Deliver(delivered)) => match delivered.msg {
                 PushMsg::SessionExited { .. } => Route::Event(Event::Exited),
@@ -190,7 +200,7 @@ fn route(driver: &mut ClientDriver, frame: &OwnedFrame) -> Route {
                 Route::Stop
             }
         },
-        // Images, regions and the rest are not shown yet.
+        // Regions and the rest are not shown yet.
         _ => Route::Skip,
     }
 }

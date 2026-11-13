@@ -45,7 +45,7 @@ fn terminfo_dir() -> Option<PathBuf> {
 /// A window's connection to the daemon at `socket`, starting `exe` as the
 /// daemon first when nothing listens there.
 pub async fn connect(socket: &Path, exe: &Path) -> anyhow::Result<Connection> {
-    let window = || felis_client_core::connect(socket, Offer::window(false));
+    let window = || felis_client_core::connect(socket, Offer::window(false).with_image_regions());
     match window().await {
         Ok(conn) => return Ok(conn),
         // Anything but an absent listener means a daemon holds the

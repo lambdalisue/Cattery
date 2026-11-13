@@ -216,3 +216,25 @@ async fn an_ended_session_leaves_the_list() {
     let listed = session::list(&daemon.socket).await.unwrap();
     assert!(listed.iter().all(|info| info.id != id));
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_window_is_told_of_an_image_a_program_draws() {
+    let daemon = Daemon::new();
+    // A one-pixel black RGB image, by the kitty graphics protocol.
+    let (events, _link) = attached(
+        &daemon,
+        &[
+            "/bin/sh",
+            "-c",
+            "printf '\\033_Ga=T,f=24,s=1,v=1;AAAA\\033\\\\'; sleep 10",
+        ],
+    )
+    .await;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(Event::Image(_)) = events.recv_timeout(Duration::from_millis(100)) {
+            return;
+        }
+    }
+    panic!("no image was told of");
+}
