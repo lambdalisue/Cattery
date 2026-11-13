@@ -21,7 +21,7 @@ const COMMANDS: [(Command, &str); 19] = [
     (Command::Prompt(PromptJump::Previous), "previous-prompt"),
     (Command::Prompt(PromptJump::Next), "next-prompt"),
     (Command::Find, "find"),
-    (Command::Sessions, "sessions"),
+    (Command::Palette, "palette"),
     (Command::Copy, "copy"),
     (Command::Paste, "paste"),
     (Command::Zoom(Zoom::In), "zoom-in"),
@@ -164,9 +164,9 @@ mod platform {
                     Some((cmd | Modifiers::SHIFT, Code::KeyN)),
                 ),
                 &item(
-                    Command::Sessions,
-                    "Sessions…",
-                    Some((cmd | Modifiers::SHIFT, Code::KeyO)),
+                    Command::Palette,
+                    "Command Palette…",
+                    Some((cmd, Code::KeyP)),
                 ),
                 &PredefinedMenuItem::separator(),
                 &item(
@@ -259,9 +259,9 @@ mod platform {
                     Some((ctrl_shift | Modifiers::ALT, Code::KeyN)),
                 ),
                 &item(
-                    Command::Sessions,
-                    "&Sessions…",
-                    Some((ctrl_shift, Code::KeyO)),
+                    Command::Palette,
+                    "Command &Palette…",
+                    Some((ctrl_shift, Code::KeyP)),
                 ),
                 &PredefinedMenuItem::separator(),
                 &item(
@@ -350,7 +350,7 @@ mod tests {
             Command::NewWindowHere,
             Command::CloseWindow,
             Command::Find,
-            Command::Sessions,
+            Command::Palette,
             Command::Copy,
             Command::Paste,
             Command::Quit,

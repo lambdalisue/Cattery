@@ -17,6 +17,7 @@ egui-wgpu.workspace = true
 egui-winit.workspace = true
 felis-client-core.workspace = true
 fontdb.workspace = true
+nucleo-matcher.workspace = true
 felis-daemon.workspace = true
 felis-grid.workspace = true
 felis-protocol.workspace = true

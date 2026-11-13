@@ -39,7 +39,7 @@ cargo run
 ```
 
 A window opens on your login shell. Closing it leaves the session running
-in Cattery's daemon; **Sessions…** (Command-Shift-O, or Control-Shift-O on
+in Cattery's daemon; the command palette (Command-P, or Control-Shift-P on
 Linux and Windows) lists them, to open one in a window again or to end it.
 
 The File menu opens more: **New Window** (Command-N) in your home

@@ -17,8 +17,8 @@ use crate::appearance::{self, Appearance};
 use crate::clipboard;
 use crate::keys::Command;
 use crate::menu::Menu;
+use crate::palette::{Asked as PaletteAsked, Palette};
 use crate::preferences::{Outcome, Page, Preferences, Shown};
-use crate::sessions::{Asked as SessionsAsked, Sessions};
 use crate::terminal::{Asked, Start, Terminal};
 use crate::{notify, place, roster, session, settings, themes};
 
@@ -75,7 +75,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         terminals: Vec::new(),
         focused: None,
         menu: None,
-        sessions: None,
+        palette: None,
         listed_at: None,
         preferences: None,
         started: false,
@@ -119,8 +119,8 @@ struct App {
     /// The window last focused, which a window opened "here" opens from.
     focused: Option<WindowId>,
     menu: Option<Menu>,
-    sessions: Option<Sessions>,
-    /// When the Sessions window last listed the sessions.
+    palette: Option<Palette>,
+    /// When the palette last listed the sessions.
     listed_at: Option<Instant>,
     preferences: Option<Preferences>,
     /// Whether the first window was opened.
@@ -189,8 +189,8 @@ impl App {
                 }
                 return;
             }
-            Command::Sessions => {
-                self.open_sessions(event_loop);
+            Command::Palette => {
+                self.open_palette(event_loop);
                 return;
             }
             Command::Prompt(jump) => {
@@ -342,10 +342,10 @@ impl App {
         }
     }
 
-    /// Bring the Sessions window up, opening it if it is not open.
-    fn open_sessions(&mut self, event_loop: &ActiveEventLoop) {
-        if let Some(sessions) = self.sessions.as_ref() {
-            sessions.focus();
+    /// Bring the palette up, opening it if it is not open.
+    fn open_palette(&mut self, event_loop: &ActiveEventLoop) {
+        if let Some(palette) = self.palette.as_ref() {
+            palette.focus();
         } else {
             let over = self
                 .focused
@@ -358,42 +358,40 @@ impl App {
                         window.scale_factor(),
                     ))
                 });
-            match Sessions::open(event_loop, &self.runtime, over) {
-                Ok(sessions) => self.sessions = Some(sessions),
-                Err(err) => tracing::warn!(?err, "the Sessions window did not open"),
+            match Palette::open(event_loop, &self.runtime, over) {
+                Ok(palette) => self.palette = Some(palette),
+                Err(err) => tracing::warn!(?err, "the palette did not open"),
             }
         }
         self.list_sessions();
     }
 
-    /// Show the Sessions window, where it is open, what the daemon keeps now.
+    /// Show the palette, where it is open, what the daemon keeps now.
     fn list_sessions(&mut self) {
-        let Some(sessions) = self.sessions.as_mut() else {
+        let Some(palette) = self.palette.as_mut() else {
             return;
         };
         self.listed_at = Some(Instant::now());
         match self.runtime.block_on(session::list(&self.socket)) {
-            Ok(listed) => sessions.show(roster::rows(&listed, place::home().as_deref())),
+            Ok(listed) => palette.show(roster::rows(&listed, place::home().as_deref())),
             Err(err) => tracing::warn!(?err, "the sessions were not listed"),
         }
     }
 
-    fn sessions_asked(&mut self, event_loop: &ActiveEventLoop, asked: SessionsAsked) {
+    fn palette_asked(&mut self, event_loop: &ActiveEventLoop, asked: PaletteAsked) {
         match asked {
-            SessionsAsked::Nothing => return,
-            SessionsAsked::Closed => {
-                self.sessions = None;
+            PaletteAsked::Nothing => return,
+            PaletteAsked::Closed => {
+                self.palette = None;
                 return;
             }
-            SessionsAsked::New => {
-                self.sessions = None;
-                if let Err(err) = self.open(event_loop, Start::New(place::home().as_deref())) {
-                    tracing::warn!(?err, "the window did not open");
-                }
+            PaletteAsked::Run(command) => {
+                self.palette = None;
+                self.command(event_loop, command, None);
                 return;
             }
-            SessionsAsked::Open(id) => {
-                self.sessions = None;
+            PaletteAsked::Open(id) => {
+                self.palette = None;
                 if let Some(terminal) = self.terminals.iter().find(|t| t.session() == id) {
                     terminal.window().focus_window();
                 } else if let Err(err) = self.open(event_loop, Start::Attach(id)) {
@@ -401,7 +399,7 @@ impl App {
                 }
                 return;
             }
-            SessionsAsked::End(id) => {
+            PaletteAsked::End(id) => {
                 if let Err(err) = self.runtime.block_on(session::end(&self.socket, id)) {
                     tracing::warn!(?err, "the session was not ended");
                 }
@@ -462,13 +460,9 @@ impl ApplicationHandler<Event> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
-        if let Some(sessions) = self
-            .sessions
-            .as_mut()
-            .filter(|sessions| sessions.id() == id)
-        {
-            let asked = sessions.window_event(&event);
-            self.sessions_asked(event_loop, asked);
+        if let Some(palette) = self.palette.as_mut().filter(|palette| palette.id() == id) {
+            let asked = palette.window_event(&event);
+            self.palette_asked(event_loop, asked);
             return;
         }
         if let Some(preferences) = self
@@ -546,10 +540,10 @@ impl ApplicationHandler<Event> for App {
             .iter_mut()
             .filter_map(|terminal| terminal.blink(now))
             .min();
-        // The Sessions window follows sessions that start and end on their own.
+        // The palette follows sessions that start and end on their own.
         let relist = self
             .listed_at
-            .filter(|_| self.sessions.is_some())
+            .filter(|_| self.palette.is_some())
             .map(|at| at + Duration::from_secs(2));
         if relist.is_some_and(|at| at <= now) {
             self.list_sessions();
@@ -558,7 +552,7 @@ impl ApplicationHandler<Event> for App {
             .into_iter()
             .chain(
                 self.listed_at
-                    .filter(|_| self.sessions.is_some())
+                    .filter(|_| self.palette.is_some())
                     .map(|at| at + Duration::from_secs(2)),
             )
             .min();

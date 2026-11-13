@@ -130,8 +130,8 @@ pub enum Command {
     Help,
     /// Where problems with Cattery are reported.
     ReportIssue,
-    /// The window listing the sessions the daemon keeps.
-    Sessions,
+    /// The command palette, which also lists the sessions the daemon keeps.
+    Palette,
     /// Search the session's history.
     Find,
     /// Copy the selection.
@@ -161,11 +161,7 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 Command::NewWindowHere,
             ),
             ("w", ModifiersState::SUPER, Command::CloseWindow),
-            (
-                "o",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::Sessions,
-            ),
+            ("p", ModifiersState::SUPER, Command::Palette),
             ("c", ModifiersState::SUPER, Command::Copy),
             ("f", ModifiersState::SUPER, Command::Find),
             ("v", ModifiersState::SUPER, Command::Paste),
@@ -191,9 +187,9 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 Command::CloseWindow,
             ),
             (
-                "o",
+                "p",
                 ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Sessions,
+                Command::Palette,
             ),
             (
                 "c",
@@ -368,7 +364,7 @@ mod tests {
             ("w", SUPER, Command::CloseWindow),
             ("c", SUPER, Command::Copy),
             ("f", SUPER, Command::Find),
-            ("O", SUPER.union(SHIFT), Command::Sessions),
+            ("p", SUPER, Command::Palette),
             ("v", SUPER, Command::Paste),
         ] {
             assert_eq!(
@@ -389,7 +385,7 @@ mod tests {
             ("W", CONTROL.union(SHIFT), Command::CloseWindow),
             ("C", CONTROL.union(SHIFT), Command::Copy),
             ("F", CONTROL.union(SHIFT), Command::Find),
-            ("O", CONTROL.union(SHIFT), Command::Sessions),
+            ("P", CONTROL.union(SHIFT), Command::Palette),
             ("V", CONTROL.union(SHIFT), Command::Paste),
         ] {
             assert_eq!(

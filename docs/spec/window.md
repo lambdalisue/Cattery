@@ -119,14 +119,23 @@ window in front. Cattery ends with its last window.
 
 ## Sessions
 
-The session palette (Command-Shift-O on macOS, Control-Shift-O on Linux and
-Windows, or Sessions… in the File menu) opens over the window in front and
-lists the sessions Cattery's daemon keeps, newest first, after an entry for
-a new window: what each is called, where it is, and whether it is open in a
-window, in the background and for how long, or ended. Typing narrows the
-list to the sessions whose name or place holds the letters typed, in order.
-The arrow keys choose; Return opens the session chosen in a new window, or
-brings forward the window showing it; Command-Backspace (Control-Shift-
-Backspace on Linux and Windows) ends it, and the program in it. Escape, or
+The command palette (Command-P on macOS, Control-Shift-P on Linux and
+Windows, or Command Palette… in the File menu) opens over the window in
+front. It lists the sessions Cattery's daemon keeps, newest first, and then
+Cattery's commands with their shortcuts. Each session says where it is,
+what runs in it, and when it was last used; the one chosen is described
+beside the list: its directory and where it started, what runs in it, when
+it was created (for a session Cattery created), when it was last used, how
+its last command ended, and its size.
+
+Typing narrows both lists as fzf reads a query: words in any order, `'`
+for an exact word, `^` and `$` for its start and end, `!` to leave out, and
+case ignored until a capital is typed. A session is found by its name,
+where it is, or what runs in it, its name counting for most. The arrow
+keys, Tab and Shift-Tab, Control-N and Control-P, or Control-J and
+Control-K move the choice. Return opens the session chosen in a new
+window, or brings forward the window showing it, or runs the command
+chosen; Command-Backspace (Control-Shift-Backspace on Linux and Windows)
+ends the session chosen, and the program in it. Escape or Control-C, or
 turning to another window, closes the palette. The list follows sessions as
 they start and end.

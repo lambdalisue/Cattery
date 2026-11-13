@@ -1,7 +1,7 @@
 //! The sessions Cattery's daemon keeps, as the session selector lists them.
 
 use std::path::Path;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
 use felis_protocol::messages::SessionInfo;
 
@@ -24,6 +24,17 @@ pub struct Row {
     /// Where it is, with the home directory as `~`.
     pub place: String,
     pub state: State,
+    /// The program in front, as the system names it.
+    pub process: Option<String>,
+    /// Where it was started, with the home directory as `~`.
+    pub started_in: Option<String>,
+    /// When Cattery created it; `None` for one it did not, or created
+    /// before it noted when.
+    pub created: Option<SystemTime>,
+    /// How the last command the shell marked ended.
+    pub exit: Option<u32>,
+    /// Its size, in columns and rows.
+    pub size: (u16, u16),
 }
 
 /// The rows for `sessions`, newest first, with `home` written as `~`.
@@ -41,6 +52,14 @@ pub fn rows(sessions: &[SessionInfo], home: Option<&Path>) -> Vec<Row> {
                 .or_else(|| session.foreground.clone())
                 .unwrap_or_else(|| "Shell".to_owned()),
             place: place(session, home),
+            process: session.foreground.clone(),
+            started_in: session
+                .spawn_cwd
+                .as_deref()
+                .map(|dir| crate::title::shortened(dir, home)),
+            created: session.tags.iter().find_map(|tag| created(tag)),
+            exit: session.last_exit_code,
+            size: (session.dims.cols, session.dims.rows),
             state: if session.exited {
                 State::Ended
             } else if session.attachments.is_empty() {
@@ -61,72 +80,40 @@ fn place(session: &SessionInfo, home: Option<&Path>) -> String {
     let Some(dir) = reported.or_else(|| session.spawn_cwd.clone()) else {
         return String::new();
     };
-    match home.and_then(|home| Path::new(&dir).strip_prefix(home).ok()) {
-        Some(rest) if rest.as_os_str().is_empty() => "~".to_owned(),
-        Some(rest) => format!("~/{}", rest.display()),
-        None => dir,
-    }
+    crate::title::shortened(&dir, home)
 }
 
-/// The rows matching `query`, best first: rows whose title or place holds the
-/// query's letters in order, ignoring case, those holding them unbroken
-/// before those holding them apart. An empty query matches every row, in
-/// the order given.
-pub fn filtered<'a>(rows: &'a [Row], query: &str) -> Vec<&'a Row> {
-    let query = query.to_lowercase();
-    let mut found: Vec<(usize, usize, &Row)> = rows
-        .iter()
-        .enumerate()
-        .filter_map(|(at, row)| {
-            let score = [&row.title, &row.place]
-                .into_iter()
-                .filter_map(|text| distance(&text.to_lowercase(), &query))
-                .min()?;
-            Some((score, at, row))
-        })
-        .collect();
-    found.sort_by_key(|(score, at, _)| (*score, *at));
-    found.into_iter().map(|(_, _, row)| row).collect()
+/// The tag Cattery gives a session it creates at `now`, saying when.
+pub fn created_tag(now: SystemTime) -> String {
+    let seconds = now
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs();
+    format!("{CREATED}{seconds}")
 }
 
-/// How far apart `query`'s letters lie in `text`, in order: none for an
-/// unbroken run; `None` where they are not all there in order.
-fn distance(text: &str, query: &str) -> Option<usize> {
-    if text.contains(query) {
-        return Some(0);
-    }
-    let mut letters = text.chars().enumerate();
-    let mut last = None;
-    let mut apart = 0;
-    for wanted in query.chars() {
-        let (at, _) = letters.find(|(_, letter)| *letter == wanted)?;
-        if let Some(last) = last {
-            apart += at - last - 1;
-        }
-        last = Some(at);
-    }
-    // Apart by nothing still is not unbroken: the run itself was not there.
-    Some(apart + 1)
+const CREATED: &str = "cattery-created=";
+
+/// When the tag `tag` says its session was created, where it says so.
+fn created(tag: &str) -> Option<SystemTime> {
+    let seconds = tag.strip_prefix(CREATED)?.parse().ok()?;
+    SystemTime::UNIX_EPOCH.checked_add(Duration::from_secs(seconds))
 }
 
-/// `state` in words.
-pub fn describe(state: State) -> String {
-    match state {
-        State::Shown(1) => "Open in a window".to_owned(),
-        State::Shown(windows) => format!("Open in {windows} windows"),
-        State::Background(idle) if idle < Duration::from_secs(60) => "In the background".to_owned(),
-        State::Background(idle) if idle < Duration::from_secs(3600) => {
-            format!("In the background for {} min", idle.as_secs() / 60)
-        }
-        State::Background(idle) => format!("In the background for {} h", idle.as_secs() / 3600),
-        State::Ended => "Ended".to_owned(),
+/// How long ago `then` was, at `now`, in words.
+pub fn ago(then: SystemTime, now: SystemTime) -> String {
+    let elapsed = now.duration_since(then).unwrap_or_default().as_secs();
+    match elapsed {
+        0..60 => "Just now".to_owned(),
+        60..3600 => format!("{} min ago", elapsed / 60),
+        3600..86_400 => format!("{} h ago", elapsed / 3600),
+        _ => format!("{} days ago", elapsed / 86_400),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU64;
-    use std::time::SystemTime;
 
     use felis_protocol::messages::{Attachment, GridDims};
 
@@ -166,44 +153,38 @@ mod tests {
         }
     }
 
-    fn row(id: u128, title: &str, place: &str) -> Row {
-        Row {
-            id,
-            title: title.to_owned(),
-            place: place.to_owned(),
-            state: State::Shown(1),
-        }
-    }
-
-    fn ids(rows: &[&Row]) -> Vec<u128> {
-        rows.iter().map(|row| row.id).collect()
+    #[test]
+    fn a_session_tells_what_runs_in_it_where_it_started_and_how_it_went() {
+        let mut busy = session(1, 1);
+        busy.foreground = Some("vim".to_owned());
+        busy.spawn_cwd = Some("/home/me/src".to_owned());
+        busy.last_exit_code = Some(2);
+        let row = &rows(&[busy], Some(Path::new("/home/me")))[0];
+        assert_eq!(row.process.as_deref(), Some("vim"));
+        assert_eq!(row.started_in.as_deref(), Some("~/src"));
+        assert_eq!(row.exit, Some(2));
+        assert_eq!(row.size, (80, 24));
     }
 
     #[test]
-    fn nothing_typed_lists_every_session() {
-        let rows = [row(1, "vim", "~"), row(2, "zsh", "~/src")];
-        assert_eq!(ids(&filtered(&rows, "")), [1, 2]);
+    fn a_session_cattery_created_tells_when() {
+        let then = SystemTime::UNIX_EPOCH + Duration::from_secs(1_800_000_000);
+        let mut tagged = session(1, 1);
+        tagged.tags = vec!["other".to_owned(), created_tag(then)];
+        let rows = rows(&[tagged, session(2, 2)], None);
+        assert_eq!(rows[1].created, Some(then));
+        assert_eq!(rows[0].created, None);
     }
 
     #[test]
-    fn what_is_typed_is_found_in_the_title_or_the_place() {
-        let rows = [row(1, "vim notes.md", "~"), row(2, "zsh", "~/src/cattery")];
-        assert_eq!(ids(&filtered(&rows, "VIM")), [1]);
-        assert_eq!(ids(&filtered(&rows, "cat")), [2]);
-        assert!(filtered(&rows, "emacs").is_empty());
-    }
-
-    #[test]
-    fn letters_in_order_match_even_apart() {
-        let rows = [row(1, "vim notes.md", "~")];
-        assert_eq!(ids(&filtered(&rows, "nmd")), [1]);
-        assert!(filtered(&rows, "dmn").is_empty());
-    }
-
-    #[test]
-    fn letters_together_come_before_letters_apart() {
-        let rows = [row(1, "cargo test", "~"), row(2, "cat", "~")];
-        assert_eq!(ids(&filtered(&rows, "cat")), [2, 1]);
+    fn how_long_ago_is_told_in_words() {
+        let now = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
+        let before = |seconds| now - Duration::from_secs(seconds);
+        assert_eq!(ago(before(10), now), "Just now");
+        assert_eq!(ago(before(5 * 60), now), "5 min ago");
+        assert_eq!(ago(before(3 * 3600), now), "3 h ago");
+        assert_eq!(ago(before(2 * 86_400), now), "2 days ago");
+        assert_eq!(ago(now + Duration::from_secs(5), now), "Just now");
     }
 
     #[test]
@@ -268,24 +249,5 @@ mod tests {
         assert_eq!(rows[2].state, State::Shown(2));
         assert_eq!(rows[1].state, State::Background(Duration::from_secs(90)));
         assert_eq!(rows[0].state, State::Ended);
-    }
-
-    #[test]
-    fn states_are_told_in_words() {
-        assert_eq!(describe(State::Shown(1)), "Open in a window");
-        assert_eq!(describe(State::Shown(3)), "Open in 3 windows");
-        assert_eq!(
-            describe(State::Background(Duration::from_secs(20))),
-            "In the background"
-        );
-        assert_eq!(
-            describe(State::Background(Duration::from_secs(5 * 60))),
-            "In the background for 5 min"
-        );
-        assert_eq!(
-            describe(State::Background(Duration::from_secs(3 * 3600 + 60))),
-            "In the background for 3 h"
-        );
-        assert_eq!(describe(State::Ended), "Ended");
     }
 }

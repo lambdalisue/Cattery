@@ -60,6 +60,8 @@ pub async fn create(
             .context("the directory to open in is not UTF-8")?
             .to_owned();
     }
+    args.tags
+        .push(crate::roster::created_tag(std::time::SystemTime::now()));
     let program = Some(args.command.clone())
         .filter(|command| !command.is_empty())
         .or_else(|| std::env::var("SHELL").ok());

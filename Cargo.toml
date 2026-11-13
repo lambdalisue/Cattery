@@ -28,6 +28,7 @@ directories = "6.0.0"
 egui = { version = "0.37.0", features = ["default_fonts"] }
 egui-wgpu = { version = "0.37.0", features = ["winit"] }
 fontdb = "0.24.0"
+nucleo-matcher = "0.3.1"
 muda = "0.21.2"
 png = "0.18.1"
 objc2 = "0.6.5"
