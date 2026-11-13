@@ -409,6 +409,7 @@ name = "cattery"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "arboard",
  "clap",
  "directories",
  "egui",

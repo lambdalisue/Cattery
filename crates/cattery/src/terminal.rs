@@ -5,16 +5,20 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use felis_client_core::config::EffectiveConfig;
+use felis_client_core::config::Osc52Policy;
+use felis_client_core::confirm::{ConfirmDecision, PendingConfirm, decide_confirm_key};
 use felis_client_core::cursor_blink::BlinkClock;
 use felis_client_core::viewport::{self, ViewportIntent};
-use felis_client_core::{Offer, OutgoingFrame, ShadowScreen};
+use felis_client_core::{GridPos, Offer, OutgoingFrame, Selection, SelectionMode, ShadowScreen};
+use felis_grid::ClipboardSelection;
 use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
 use felis_protocol::messages::{
     InputMsg, Key, KeyEventKind, MouseAction, MouseButton, MouseEvent, SessionInfo,
 };
+use felis_render_core::overlay::ConfirmOverlay;
 use felis_render_core::palette::Theme;
-use felis_render_core::{ImageData, ImageSource, layout};
+use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
 use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::UnboundedSender;
@@ -26,8 +30,9 @@ use winit::window::{Window, WindowId};
 
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
+use crate::select::{self, Clicks, Paste};
 use crate::settings::{self, Changes, Zoom};
-use crate::{daemon, grid, icon, inserted, mouse, session, title};
+use crate::{clipboard, daemon, grid, icon, inserted, mouse, session, title};
 
 /// How long the daemon is given to end a session when its window closes.
 const ENDING: Duration = Duration::from_secs(5);
@@ -57,6 +62,16 @@ pub struct Terminal {
     pointer: Option<PhysicalPosition<f64>>,
     /// The buttons pressed while the program was told of them.
     grabbed: Vec<MouseButton>,
+    clicks: Clicks,
+    /// Whether the left button is held selecting.
+    selecting: bool,
+    /// Where a selection starts that the pointer has not yet drawn out.
+    anchored: Option<Selection>,
+    selection: Option<Selection>,
+    /// What waits for the confirmation bar's answer.
+    pending: Option<PendingConfirm>,
+    /// Whether a program's writes to the clipboard reach the system's.
+    osc_52: Osc52Policy,
     /// Trackpad pixels not yet a row.
     wheel_residue: f64,
     /// The rows a notch of the wheel scrolls, as the settings give.
@@ -140,6 +155,12 @@ impl Terminal {
             intent: ViewportIntent::default(),
             pointer: None,
             grabbed: Vec::new(),
+            clicks: Clicks::default(),
+            selecting: false,
+            anchored: None,
+            selection: None,
+            pending: None,
+            osc_52: settings.clipboard.osc_52,
             wheel_residue: 0.0,
             lines: settings.mouse.clamped_scroll_multiplier(),
             inserted_for: None,
@@ -207,6 +228,7 @@ impl Terminal {
             WindowEvent::CursorLeft { .. } => self.pointer = None,
             WindowEvent::MouseInput { state, button, .. } => self.press(state, button),
             WindowEvent::MouseWheel { delta, .. } => self.turn_wheel(delta, self.lines),
+            WindowEvent::DroppedFile(path) => self.paste(&select::dropped(&path)),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }
@@ -217,9 +239,24 @@ impl Terminal {
     pub fn session_event(&mut self, event: session::Event) -> anyhow::Result<bool> {
         match event {
             session::Event::Grid(msg) => {
+                let before = (self.shadow.alt_screen(), self.shadow.viewport());
                 self.shadow.apply(&msg)?;
+                let after = (self.shadow.alt_screen(), self.shadow.viewport());
+                if self.selection.is_some()
+                    && select::invalidated((before.0, after.0), (before.1, after.1))
+                {
+                    self.select(None);
+                }
                 if self.shadow.take_title_dirty().is_some() {
                     self.retitle();
+                }
+                // A program's write to the clipboard reaches the system's only
+                // where the settings let it, as in felis's own window.
+                if let Some(write) = self.shadow.take_pending_clipboard_set()
+                    && self.osc_52 == Osc52Policy::System
+                    && write.selection.contains(ClipboardSelection::CLIPBOARD)
+                {
+                    clipboard::write(&String::from_utf8_lossy(&write.data));
                 }
                 self.redraw();
                 Ok(true)
@@ -234,6 +271,7 @@ impl Terminal {
 
     /// Draw with `after` where it differs from `before`.
     pub fn restyle(&mut self, before: &EffectiveConfig, after: &EffectiveConfig) {
+        self.osc_52 = after.clipboard.osc_52;
         self.lines = after.mouse.clamped_scroll_multiplier();
         if before.window.title_prefix != after.window.title_prefix {
             self.title_prefix.clone_from(&after.window.title_prefix);
@@ -301,6 +339,46 @@ impl Terminal {
         self.fit(self.window.inner_size());
     }
 
+    /// The selected text, if any is selected.
+    pub fn copy(&self) -> Option<String> {
+        self.selection
+            .map(|selection| selection.extract_text(self.shadow.screen()))
+            .filter(|text| !text.is_empty())
+    }
+
+    /// Paste `text` into the session, asking first where it would run
+    /// commands the program did not ask to take as a paste.
+    pub fn paste(&mut self, text: &str) {
+        match select::paste(text, self.shadow.bracketed_paste()) {
+            Paste::Send(input) => self.type_input(input),
+            Paste::Confirm(InputMsg::Paste(bytes)) => {
+                let pending = PendingConfirm::Paste(bytes);
+                self.renderer.set_confirm_overlay(Some(ConfirmOverlay {
+                    label: pending.label(),
+                }));
+                self.pending = Some(pending);
+                self.redraw();
+            }
+            Paste::Confirm(_) => {}
+            Paste::TooLarge => tracing::warn!(bytes = text.len(), "too much to paste"),
+        }
+    }
+
+    /// Answer the confirmation bar with the key typed: y goes ahead, and
+    /// any other key, Escape among them, does not.
+    fn answer(&mut self, text: Option<&str>) {
+        let Some(pending) = self.pending.take() else {
+            return;
+        };
+        self.renderer.set_confirm_overlay(None);
+        if decide_confirm_key(text) == ConfirmDecision::Confirm
+            && let PendingConfirm::Paste(bytes) = pending
+        {
+            self.type_input(InputMsg::Paste(bytes));
+        }
+        self.redraw();
+    }
+
     /// Blink the cursor if it is time; when to look again.
     pub fn blink(&mut self, now: Instant) -> Option<Instant> {
         let blinks = self.cursor_shown() && self.shadow.screen().cursor_blink();
@@ -335,6 +413,12 @@ impl Terminal {
 
     fn type_key(&mut self, event: &winit::event::KeyEvent) {
         self.show_cursor();
+        if self.pending.is_some() {
+            if event.state.is_pressed() {
+                self.answer(event.text.as_deref());
+            }
+            return;
+        }
         if event.state.is_pressed() {
             if let Some(direction) = keys::page(&event.logical_key, self.modifiers)
                 && !self.shadow.alt_screen()
@@ -447,8 +531,13 @@ impl Terminal {
         match state {
             ElementState::Pressed => {
                 if mouse::to_program(self.shadow.mouse_protocol_active(), self.modifiers) {
+                    // What the program does with the click is its own;
+                    // a selection left showing would be of other text.
+                    self.select(None);
                     self.grabbed.push(button);
                     self.report(Some(button), MouseAction::Press);
+                } else if button == MouseButton::Left {
+                    self.start_selecting();
                 }
             }
             // A release follows its press: to the program if it was told of
@@ -457,17 +546,65 @@ impl Terminal {
                 if let Some(at) = self.grabbed.iter().position(|held| *held == button) {
                     self.grabbed.remove(at);
                     self.report(Some(button), MouseAction::Release);
+                } else if button == MouseButton::Left {
+                    self.selecting = false;
                 }
             }
         }
+    }
+
+    /// Select from the cell under the pointer: from there for one click, the
+    /// word for two, the line for three, a rectangle with Alt held.
+    fn start_selecting(&mut self) {
+        let Some(((row, col), _)) = self.pointed() else {
+            return;
+        };
+        let cell = GridPos { row, col };
+        let screen = self.shadow.screen();
+        let clicks = self.clicks.record(Instant::now(), cell);
+        let selection = match clicks {
+            1 if self.modifiers.alt_key() => Some(Selection::new_rectangle(cell)),
+            1 => Some(Selection::new(cell)),
+            2 => Selection::word_at(screen, cell),
+            _ => Selection::line_at(screen, row),
+        };
+        self.selecting = true;
+        // A single click marks where a selection starts, and shows nothing
+        // until the pointer moves.
+        self.anchored = selection;
+        self.select(selection.filter(|_| clicks > 1));
+    }
+
+    fn select(&mut self, selection: Option<Selection>) {
+        self.selection = selection;
+        self.renderer.set_selection(selection.map(|selection| {
+            let (start, end) = selection.range();
+            SelectionRange {
+                start,
+                end,
+                rectangle: selection.mode() == SelectionMode::Rectangle,
+            }
+        }));
+        self.redraw();
     }
 
     fn point(&mut self, position: PhysicalPosition<f64>) {
         let before = self.pointed().map(|(cell, _)| cell);
         self.pointer = Some(position);
         let after = self.pointed().map(|(cell, _)| cell);
+        if before == after {
+            return;
+        }
+        if self.selecting
+            && let Some((row, col)) = after
+            && let Some(mut selection) = self.selection.or(self.anchored)
+        {
+            selection.extend(GridPos { row, col });
+            self.select(Some(selection));
+            return;
+        }
         // Programs are told of motion a cell at a time.
-        if before == after || !self.shadow.mouse_protocol_active() {
+        if !self.shadow.mouse_protocol_active() {
             return;
         }
         match self.grabbed.last().copied() {

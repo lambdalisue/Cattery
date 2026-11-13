@@ -51,6 +51,15 @@ the session's history, as Shift with Page Up and Page Down does by half a
 screen, and on the alternate screen it sends a pager the arrow keys (the
 page keys with Shift). Typing returns the view to the live screen.
 
+Dragging selects text — a word with two clicks, a line with three, a
+rectangle with Alt held — and Copy puts it on the clipboard (Command-C on
+macOS, Control-Shift-C on Linux and Windows, or the Edit menu). Paste
+(Command-V, Control-Shift-V) sends the clipboard's text, as does dropping a
+file its path; text that would run commands in a program not taking it as
+a paste — a line break without bracketed paste — waits for `y` first. A
+program's write to the clipboard (`OSC 52`) reaches the system's only where
+the settings' `clipboard.osc_52` is `system`.
+
 A window's text grows and shrinks a pixel at a time, within the sizes
 felis draws, and returns to the size the settings give: Command with `=`,
 `-` and `0` on macOS, Control-Shift with them on Linux and Windows, or the

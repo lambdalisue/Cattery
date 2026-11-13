@@ -9,6 +9,7 @@ publish = false
 
 [dependencies]
 anyhow.workspace = true
+arboard.workspace = true
 clap.workspace = true
 directories.workspace = true
 egui.workspace = true

@@ -13,6 +13,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::{Theme, WindowId};
 
 use crate::appearance::{self, Appearance};
+use crate::clipboard;
 use crate::keys::Command;
 use crate::menu::Menu;
 use crate::preferences::{Outcome, Page, Preferences, Shown};
@@ -156,6 +157,20 @@ impl App {
                 }
                 return;
             }
+            Command::Copy => {
+                if let Some(text) = self.terminal_mut(from).and_then(|terminal| terminal.copy()) {
+                    clipboard::write(&text);
+                }
+                return;
+            }
+            Command::Paste => {
+                if let Some(text) = clipboard::read()
+                    && let Some(terminal) = self.terminal_mut(from)
+                {
+                    terminal.paste(&text);
+                }
+                return;
+            }
             Command::Zoom(step) => {
                 let id = from.or(self.focused);
                 let drawn = &self.drawn;
@@ -182,6 +197,14 @@ impl App {
         if let Err(err) = opened {
             tracing::warn!(?err, "the window did not open");
         }
+    }
+
+    /// The window `from`, or the one last focused.
+    fn terminal_mut(&mut self, from: Option<WindowId>) -> Option<&mut Terminal> {
+        let id = from.or(self.focused)?;
+        self.terminals
+            .iter_mut()
+            .find(|terminal| terminal.id() == id)
     }
 
     fn terminal(&self, id: WindowId) -> Option<&Terminal> {

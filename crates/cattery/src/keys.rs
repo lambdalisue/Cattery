@@ -122,6 +122,10 @@ pub enum Command {
     /// opened from.
     NewWindowHere,
     CloseWindow,
+    /// Copy the selection.
+    Copy,
+    /// Paste what the clipboard holds.
+    Paste,
     /// End every window's session and the app.
     Quit,
     Zoom(Zoom),
@@ -143,6 +147,8 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 Command::NewWindowHere,
             ),
             ("w", ModifiersState::SUPER, Command::CloseWindow),
+            ("c", ModifiersState::SUPER, Command::Copy),
+            ("v", ModifiersState::SUPER, Command::Paste),
         ]
     } else {
         &[
@@ -163,6 +169,16 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 "w",
                 ModifiersState::CONTROL.union(ModifiersState::SHIFT),
                 Command::CloseWindow,
+            ),
+            (
+                "c",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::Copy,
+            ),
+            (
+                "v",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::Paste,
             ),
         ]
     };
@@ -283,6 +299,8 @@ mod tests {
             ("n", SUPER, Command::NewWindow),
             ("N", SUPER.union(SHIFT), Command::NewWindowHere),
             ("w", SUPER, Command::CloseWindow),
+            ("c", SUPER, Command::Copy),
+            ("v", SUPER, Command::Paste),
         ] {
             assert_eq!(
                 super::command(&character(key), mods),
@@ -300,6 +318,8 @@ mod tests {
             ("N", CONTROL.union(SHIFT), Command::NewWindow),
             ("N", CONTROL.union(SHIFT).union(ALT), Command::NewWindowHere),
             ("W", CONTROL.union(SHIFT), Command::CloseWindow),
+            ("C", CONTROL.union(SHIFT), Command::Copy),
+            ("V", CONTROL.union(SHIFT), Command::Paste),
         ] {
             assert_eq!(
                 super::command(&character(key), mods),

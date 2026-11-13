@@ -11,7 +11,9 @@ use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 9] = [
+const COMMANDS: [(Command, &str); 11] = [
+    (Command::Copy, "copy"),
+    (Command::Paste, "paste"),
     (Command::Zoom(Zoom::In), "zoom-in"),
     (Command::Zoom(Zoom::Out), "zoom-out"),
     (Command::Zoom(Zoom::Reset), "zoom-reset"),
@@ -142,6 +144,14 @@ mod platform {
                 ),
             ],
         )?;
+        let edit = Submenu::with_items(
+            "Edit",
+            true,
+            &[
+                &item(Command::Copy, "Copy", Some((cmd, Code::KeyC))),
+                &item(Command::Paste, "Paste", Some((cmd, Code::KeyV))),
+            ],
+        )?;
         let view = Submenu::with_items(
             "View",
             true,
@@ -170,7 +180,7 @@ mod platform {
             ],
         )?;
         window.set_as_windows_menu_for_nsapp();
-        Menu::with_items(&[&app, &shell, &view, &window])
+        Menu::with_items(&[&app, &shell, &edit, &view, &window])
     }
 
     #[cfg(target_os = "windows")]
@@ -205,6 +215,14 @@ mod platform {
                 &item(Command::Quit, "E&xit", None),
             ],
         )?;
+        let edit = Submenu::with_items(
+            "&Edit",
+            true,
+            &[
+                &item(Command::Copy, "&Copy", Some((ctrl_shift, Code::KeyC))),
+                &item(Command::Paste, "&Paste", Some((ctrl_shift, Code::KeyV))),
+            ],
+        )?;
         let view = Submenu::with_items(
             "&View",
             true,
@@ -231,7 +249,7 @@ mod platform {
             true,
             &[&item(Command::About, "&About Cattery", None)],
         )?;
-        Menu::with_items(&[&file, &view, &help])
+        Menu::with_items(&[&file, &edit, &view, &help])
     }
 }
 
@@ -247,6 +265,8 @@ mod tests {
             Command::NewWindow,
             Command::NewWindowHere,
             Command::CloseWindow,
+            Command::Copy,
+            Command::Paste,
             Command::Quit,
             Command::Zoom(Zoom::In),
             Command::Zoom(Zoom::Out),

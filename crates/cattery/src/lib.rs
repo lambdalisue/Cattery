@@ -6,6 +6,7 @@
 pub mod about;
 pub mod app;
 pub mod appearance;
+pub mod clipboard;
 pub mod daemon;
 pub mod edit;
 pub mod grid;
@@ -16,6 +17,7 @@ pub mod menu;
 pub mod mouse;
 pub mod place;
 pub mod preferences;
+pub mod select;
 pub mod session;
 pub mod settings;
 pub mod socket;
