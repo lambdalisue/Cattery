@@ -22,20 +22,16 @@ pub enum Event {
     Closed,
 }
 
-/// Create a session running `command`, or the user's shell when it is
-/// empty, and attach `conn` to it.
+/// Create a session running `shell`, or the user's login shell when it
+/// names no command, and attach `conn` to it.
 pub async fn create(
     conn: &mut Connection,
-    command: Vec<String>,
+    shell: &ShellConfig,
     socket: &Path,
 ) -> anyhow::Result<SessionInfo> {
     // The working directory and environment are the launcher's, as a
     // terminal opened from it would have them.
-    let args = launch_args(
-        command,
-        &ShellConfig::default(),
-        &Carrier::Local(Endpoint::from(socket)),
-    )?;
+    let args = launch_args(Vec::new(), shell, &Carrier::Local(Endpoint::from(socket)))?;
     Ok(conn.create_with(args).await?)
 }
 

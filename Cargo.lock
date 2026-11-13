@@ -302,6 +302,7 @@ version = "0.0.0"
 dependencies = [
  "anyhow",
  "clap",
+ "directories",
  "felis-client-core",
  "felis-daemon",
  "felis-grid",

@@ -9,6 +9,7 @@ use std::time::{Duration, Instant};
 
 use cattery::daemon;
 use cattery::session::{self, Event};
+use felis_client_core::config::ShellConfig;
 use felis_client_core::{Connection, Offer, OutgoingFrame, ShadowScreen};
 use felis_protocol::messages::StopMode;
 use tokio::sync::mpsc::UnboundedSender;
@@ -58,8 +59,10 @@ async fn attached(
     command: &[&str],
 ) -> (mpsc::Receiver<Event>, UnboundedSender<OutgoingFrame>) {
     let mut conn = daemon.connect().await;
-    let command = command.iter().map(|s| (*s).to_owned()).collect();
-    session::create(&mut conn, command, &daemon.socket)
+    let shell = ShellConfig {
+        command: command.iter().map(|s| (*s).to_owned()).collect(),
+    };
+    session::create(&mut conn, &shell, &daemon.socket)
         .await
         .unwrap();
     let (tx, rx) = mpsc::channel();

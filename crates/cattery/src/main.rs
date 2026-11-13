@@ -1,4 +1,4 @@
-use cattery::{app, daemon, socket};
+use cattery::{app, daemon, settings, socket};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
@@ -32,7 +32,10 @@ fn main() -> anyhow::Result<()> {
                 .with_env_filter(EnvFilter::from_default_env())
                 .with_writer(std::io::stderr)
                 .init();
-            app::run(socket::resolve(std::env::var_os(socket::OVERRIDE_VAR))?)
+            app::run(
+                socket::resolve(std::env::var_os(socket::OVERRIDE_VAR))?,
+                settings::path(std::env::var_os(settings::OVERRIDE_VAR)),
+            )
         }
     }
 }

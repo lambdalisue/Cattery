@@ -10,6 +10,7 @@ publish = false
 [dependencies]
 anyhow.workspace = true
 clap.workspace = true
+directories.workspace = true
 felis-client-core.workspace = true
 felis-daemon.workspace = true
 felis-grid.workspace = true

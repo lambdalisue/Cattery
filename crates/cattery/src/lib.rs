@@ -8,4 +8,5 @@ pub mod daemon;
 pub mod grid;
 pub mod keys;
 pub mod session;
+pub mod settings;
 pub mod socket;
