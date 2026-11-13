@@ -1,10 +1,12 @@
-# Marks prompts and commands (OSC 133) and reports the working directory
-# (OSC 7), so Cattery can jump between prompts and open a window where the
-# shell is.
+# Marks prompts and commands (OSC 133), reports the working directory
+# (OSC 7), and reports each command line as felis's program status
+# (OSC 7501), so Cattery can jump between prompts, open a window where the
+# shell is, and say what last ran in a session.
 
 [[ -o interactive ]] || return 0
 (( ${+_cattery_running} )) && return 0
 typeset -gi _cattery_running=0
+typeset -g _cattery_command=
 unset CATTERY_SHELL_INTEGRATION
 
 autoload -Uz add-zsh-hook
@@ -12,6 +14,8 @@ autoload -Uz add-zsh-hook
 _cattery_preexec() {
   _cattery_running=1
   print -n '\e]133;C\e\\'
+  _cattery_command=$1
+  _cattery_report_command working
 }
 
 _cattery_mark_end() {
@@ -20,6 +24,50 @@ _cattery_mark_end() {
   (( _cattery_running )) || return 0
   _cattery_running=0
   print -n "\e]133;D;$code\e\\"
+  if (( code )); then
+    _cattery_report_command error
+  else
+    _cattery_report_command done
+  fi
+}
+
+# The command line, on one line and within the 192 bytes felis keeps of a
+# status title, as felis's program status (OSC 7501).
+_cattery_report_command() {
+  local command=${_cattery_command//[[:cntrl:]]/ }
+  command=${(j: :)${=command}}
+  _cattery_bytes $command
+  if (( REPLY > 192 )); then
+    while _cattery_bytes "$command…"; (( REPLY > 192 )); do
+      command=${command[1,-2]}
+    done
+    command+=…
+  fi
+  _cattery_base64 $command
+  print -n "\e]7501;state=$1:id=shell:app=cattery:title=$REPLY\e\\"
+}
+
+_cattery_bytes() {
+  local LC_ALL=C
+  REPLY=${#1}
+}
+
+_cattery_base64() {
+  local LC_ALL=C text=$1 out= a b c n i i1 i2 i3 i4
+  local table=ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/
+  for (( i = 1; i <= ${#text}; i += 3 )); do
+    a=${text[i]} b=${text[i+1]} c=${text[i+2]}
+    n=$(( (#a & 255) << 16 ))
+    [[ -n $b ]] && n=$(( n | (#b & 255) << 8 ))
+    [[ -n $c ]] && n=$(( n | (#c & 255) ))
+    # A subscript starting with `(` would be read as subscript flags.
+    i1=$(( (n >> 18 & 63) + 1 )) i2=$(( (n >> 12 & 63) + 1 ))
+    i3=$(( (n >> 6 & 63) + 1 )) i4=$(( (n & 63) + 1 ))
+    out+=${table[i1]}${table[i2]}
+    if [[ -n $b ]]; then out+=${table[i3]}; else out+='='; fi
+    if [[ -n $c ]]; then out+=${table[i4]}; else out+='='; fi
+  done
+  REPLY=$out
 }
 
 _cattery_mark_prompt() {

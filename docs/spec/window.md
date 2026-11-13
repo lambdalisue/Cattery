@@ -79,8 +79,10 @@ A shell that marks its prompts (OSC 133) can be stepped through them:
 Previous Prompt and Next Prompt in the View menu, Command-Up and
 Command-Down on macOS, Control-Shift-Z and Control-Shift-X on Linux and
 Windows, bring the prompt before or after into view. zsh started in a window
-is set up to mark its prompts and report its directory, after reading the
-user's own startup files as it always does; fish marks them itself.
+is set up to mark its prompts and report its directory, and zsh and fish
+to report each command line they run (as felis's program status, OSC
+7501), after reading the user's own startup files as they always do; fish
+marks its prompts itself.
 
 A link opens in the platform's default app when clicked with Command held
 on macOS, or Control on Linux and Windows; the pointer turns to a hand over
@@ -130,8 +132,8 @@ front. It lists the sessions Cattery's daemon keeps, newest first, and then
 Cattery's commands with their shortcuts. Each session says where it is,
 what runs in it, and when it was last used; the one chosen is described
 beside the list: its directory and where it started, what runs in it, when
-it was created (for a session Cattery created), when it was last used, how
-its last command ended, and its size.
+it was created (for a session Cattery created), when it was last used, its
+last command and how it ended or that it still runs, and its size.
 
 Typing narrows both lists as fzf reads a query: words in any order, `'`
 for an exact word, `^` and `$` for its start and end, `!` to leave out, and

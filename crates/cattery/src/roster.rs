@@ -3,7 +3,7 @@
 use std::path::Path;
 use std::time::{Duration, SystemTime};
 
-use felis_protocol::messages::SessionInfo;
+use felis_protocol::messages::{ProgramStatusRecord, SessionInfo};
 
 /// What a session is doing, as far as its windows go.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -14,6 +14,20 @@ pub enum State {
     Background(Duration),
     /// Its program has ended; the daemon lets it go shortly.
     Ended,
+}
+
+/// A command line the shell reported, as it went.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Ran {
+    pub line: String,
+    pub outcome: Outcome,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    Running,
+    Succeeded,
+    Failed,
 }
 
 /// One session, as a row of the selector.
@@ -33,6 +47,8 @@ pub struct Row {
     pub created: Option<SystemTime>,
     /// How the last command the shell marked ended.
     pub exit: Option<u32>,
+    /// The last command line the shell reported, and whether it still runs.
+    pub command: Option<Ran>,
     /// Its size, in columns and rows.
     pub size: (u16, u16),
 }
@@ -59,6 +75,7 @@ pub fn rows(sessions: &[SessionInfo], home: Option<&Path>) -> Vec<Row> {
                 .map(|dir| crate::title::shortened(dir, home)),
             created: session.tags.iter().find_map(|tag| created(tag)),
             exit: session.last_exit_code,
+            command: session.program_status.iter().find_map(ran),
             size: (session.dims.cols, session.dims.rows),
             state: if session.exited {
                 State::Ended
@@ -81,6 +98,23 @@ fn place(session: &SessionInfo, home: Option<&Path>) -> String {
         return String::new();
     };
     crate::title::shortened(&dir, home)
+}
+
+/// The command line Cattery's shell integration reported in `record`.
+fn ran(record: &ProgramStatusRecord) -> Option<Ran> {
+    if record.id != "shell" || record.app.as_deref() != Some("cattery") {
+        return None;
+    }
+    let outcome = match record.state.as_str() {
+        "working" => Outcome::Running,
+        "done" => Outcome::Succeeded,
+        "error" => Outcome::Failed,
+        _ => return None,
+    };
+    Some(Ran {
+        line: record.title.clone().filter(|line| !line.is_empty())?,
+        outcome,
+    })
 }
 
 /// The tag Cattery gives a session it creates at `now`, saying when.
@@ -164,6 +198,35 @@ mod tests {
         assert_eq!(row.started_in.as_deref(), Some("~/src"));
         assert_eq!(row.exit, Some(2));
         assert_eq!(row.size, (80, 24));
+    }
+
+    #[test]
+    fn a_session_tells_the_last_command_its_shell_reported() {
+        let record = |state: &str, app: Option<&str>| ProgramStatusRecord {
+            id: "shell".to_owned(),
+            state: state.to_owned(),
+            kind: None,
+            progress: None,
+            app: app.map(str::to_owned),
+            title: Some("cargo test".to_owned()),
+            msg: None,
+        };
+        let mut running = session(1, 1);
+        running.program_status = vec![record("working", Some("cattery"))];
+        let mut failed = session(2, 2);
+        failed.program_status = vec![record("error", Some("cattery"))];
+        let mut foreign = session(3, 3);
+        foreign.program_status = vec![record("done", Some("claude"))];
+        let rows = rows(&[running, failed, foreign], None);
+        let ran = |line: &str, outcome| {
+            Some(Ran {
+                line: line.to_owned(),
+                outcome,
+            })
+        };
+        assert_eq!(rows[2].command, ran("cargo test", Outcome::Running));
+        assert_eq!(rows[1].command, ran("cargo test", Outcome::Failed));
+        assert_eq!(rows[0].command, None);
     }
 
     #[test]

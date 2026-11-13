@@ -65,12 +65,10 @@ pub async fn create(
     let program = Some(args.command.clone())
         .filter(|command| !command.is_empty())
         .or_else(|| std::env::var("SHELL").ok());
-    if program.as_deref().is_some_and(integration::is_zsh)
-        && let Some(dir) = integration::zsh_dir()
-    {
-        let zdotdir = std::env::var("ZDOTDIR").ok();
-        args.env
-            .extend(integration::zsh_env(&dir, zdotdir.as_deref()));
+    if let (Some(program), Some(dir)) = (program, integration::dir()) {
+        args.env.extend(integration::env(&program, &dir, |key| {
+            std::env::var(key).ok()
+        }));
     }
     Ok(conn.create_with(args).await?)
 }

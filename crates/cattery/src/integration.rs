@@ -1,28 +1,39 @@
-//! Shell integration: the shell marking its prompts and reporting where it
-//! is, which zsh is set up to do as Cattery starts it.
+//! Shell integration: the shell marking its prompts, reporting where it
+//! is and what it ran, which zsh and fish are set up to do as Cattery
+//! starts them.
 
 use std::hash::{DefaultHasher, Hash as _, Hasher as _};
 use std::path::{Path, PathBuf};
 
 const ZSHENV: &str = include_str!("../shell/.zshenv");
 const ZSH: &str = include_str!("../shell/cattery.zsh");
+const FISH: &str = include_str!("../shell/fish/vendor_conf.d/cattery.fish");
 
-/// The folder under `cache` zsh is pointed at, written there when it is not
+/// The scripts, where they go in the folder.
+const SCRIPTS: [(&str, &str); 3] = [
+    (".zshenv", ZSHENV),
+    ("cattery.zsh", ZSH),
+    ("fish/vendor_conf.d/cattery.fish", FISH),
+];
+
+/// The folder under `cache` the shells are pointed at, written there when it is not
 /// there yet; `None` where it cannot be written.
 pub fn prepared(cache: &Path) -> Option<PathBuf> {
     // Named after the scripts, so a Cattery with others writes anew beside
     // those a running older one still reads.
-    let dir = cache.join("zsh").join(format!("{:016x}", {
+    let dir = cache.join("shell").join(format!("{:016x}", {
         let mut hasher = DefaultHasher::new();
-        (ZSHENV, ZSH).hash(&mut hasher);
+        SCRIPTS.hash(&mut hasher);
         hasher.finish()
     }));
-    if dir.join("cattery.zsh").is_file() {
+    if SCRIPTS.iter().all(|(path, _)| dir.join(path).is_file()) {
         return Some(dir);
     }
-    let written = std::fs::create_dir_all(&dir)
-        .and_then(|()| std::fs::write(dir.join(".zshenv"), ZSHENV))
-        .and_then(|()| std::fs::write(dir.join("cattery.zsh"), ZSH));
+    let written = SCRIPTS.iter().try_for_each(|(path, script)| {
+        let path = dir.join(path);
+        std::fs::create_dir_all(path.parent().unwrap_or(&dir))?;
+        std::fs::write(path, script)
+    });
     match written {
         Ok(()) => Some(dir),
         Err(err) => {
@@ -33,8 +44,9 @@ pub fn prepared(cache: &Path) -> Option<PathBuf> {
     }
 }
 
-/// The folder zsh is pointed at, in Cattery's cache; written on first use.
-pub fn zsh_dir() -> Option<PathBuf> {
+/// The folder the shells are pointed at, in Cattery's cache; written on
+/// first use.
+pub fn dir() -> Option<PathBuf> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
         let cache = directories::ProjectDirs::from("", "", "cattery")?;
@@ -43,14 +55,34 @@ pub fn zsh_dir() -> Option<PathBuf> {
     .clone()
 }
 
-/// Whether `program` is zsh, by the name it is run by.
-pub fn is_zsh(program: &str) -> bool {
+/// Whether `program` is the shell `shell`, by the name it is run by.
+pub fn is(program: &str, shell: &str) -> bool {
     let name = Path::new(program)
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or(program);
     let name = name.trim_start_matches('-');
-    name == "zsh" || name.starts_with("zsh-")
+    name == shell
+        || name
+            .strip_prefix(shell)
+            .is_some_and(|rest| rest.starts_with('-'))
+}
+
+/// What to add to the environment of `program` to load the integration in
+/// `dir`, `env` reading the environment Cattery has; nothing for a shell
+/// with none.
+pub fn env(
+    program: &str,
+    dir: &Path,
+    env: impl Fn(&str) -> Option<String>,
+) -> Vec<(String, String)> {
+    if is(program, "zsh") {
+        zsh_env(dir, env("ZDOTDIR").as_deref())
+    } else if is(program, "fish") {
+        fish_env(dir, env("XDG_DATA_DIRS").as_deref())
+    } else {
+        Vec::new()
+    }
 }
 
 /// What to add to zsh's environment to load the integration in `dir`, the
@@ -69,18 +101,66 @@ pub fn zsh_env(dir: &Path, zdotdir: Option<&str>) -> Vec<(String, String)> {
     env
 }
 
+/// What to add to fish's environment to load the integration in `dir`, the
+/// user's own `XDG_DATA_DIRS` being `data_dirs`.
+pub fn fish_env(dir: &Path, data_dirs: Option<&str>) -> Vec<(String, String)> {
+    // Unset, the directories fall back to these, which fish must still
+    // search.
+    let rest = data_dirs.unwrap_or("/usr/local/share:/usr/share");
+    let mut env = vec![(
+        "XDG_DATA_DIRS".to_owned(),
+        format!("{}:{rest}", dir.display()),
+    )];
+    if let Some(data_dirs) = data_dirs {
+        env.push(("CATTERY_XDG_DATA_DIRS".to_owned(), data_dirs.to_owned()));
+    }
+    env
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
-    fn zsh_is_known_however_it_is_named() {
-        assert!(is_zsh("zsh"));
-        assert!(is_zsh("/bin/zsh"));
-        assert!(is_zsh("-zsh"));
-        assert!(is_zsh("/opt/homebrew/bin/zsh-5.9"));
-        assert!(!is_zsh("/usr/bin/fish"));
-        assert!(!is_zsh("zshdb"));
+    fn a_shell_is_known_however_it_is_named() {
+        assert!(is("zsh", "zsh"));
+        assert!(is("/bin/zsh", "zsh"));
+        assert!(is("-zsh", "zsh"));
+        assert!(is("/opt/homebrew/bin/zsh-5.9", "zsh"));
+        assert!(!is("/usr/bin/fish", "zsh"));
+        assert!(!is("zshdb", "zsh"));
+        assert!(is("/run/current-system/sw/bin/fish", "fish"));
+    }
+
+    #[test]
+    fn only_zsh_and_fish_are_set_up() {
+        let dir = Path::new("/cache/shell/1");
+        let none = |_: &str| None;
+        assert!(env("/bin/bash", dir, none).is_empty());
+        assert_eq!(env("/bin/zsh", dir, none)[0].0, "ZDOTDIR");
+        assert_eq!(env("fish", dir, none)[0].0, "XDG_DATA_DIRS");
+    }
+
+    #[test]
+    fn fish_searches_cattery_s_folder_first_and_the_user_s_after() {
+        let dir = Path::new("/cache/shell/1");
+        assert_eq!(
+            fish_env(dir, None),
+            [(
+                "XDG_DATA_DIRS".to_owned(),
+                "/cache/shell/1:/usr/local/share:/usr/share".to_owned()
+            )]
+        );
+        assert_eq!(
+            fish_env(dir, Some("/nix/share")),
+            [
+                (
+                    "XDG_DATA_DIRS".to_owned(),
+                    "/cache/shell/1:/nix/share".to_owned()
+                ),
+                ("CATTERY_XDG_DATA_DIRS".to_owned(), "/nix/share".to_owned()),
+            ]
+        );
     }
 
     #[test]
@@ -173,6 +253,10 @@ mod tests {
             "\x1b]133;C",
             "\x1b]133;D;1",
             "\x1b]7;file://",
+            // The command as it runs and as it ended, as felis's program
+            // status keeps it: "false" in base64.
+            "\x1b]7501;state=working:id=shell:app=cattery:title=ZmFsc2U=",
+            "\x1b]7501;state=error:id=shell:app=cattery:title=ZmFsc2U=",
         ] {
             assert!(printed.contains(mark), "{mark:?} in {printed:?}");
         }

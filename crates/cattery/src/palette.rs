@@ -19,7 +19,7 @@ use crate::commands;
 use crate::fuzzy::{self, Query};
 use crate::keys::Command;
 use crate::look::Tokens;
-use crate::roster::{self, Row, State};
+use crate::roster::{self, Outcome, Row, State};
 use crate::surface::Surface;
 
 /// What a window event asks of the app.
@@ -295,21 +295,31 @@ fn details(row: &Row, now: SystemTime) -> Vec<(&'static str, String)> {
                 .map_or_else(unknown, |created| roster::ago(created, now)),
         ),
         ("Last used", used(row.state, now)),
-        (
-            "Last command",
-            row.exit.map_or_else(
-                || "Not reported".to_owned(),
-                |code| {
-                    if code == 0 {
-                        "Succeeded".to_owned()
-                    } else {
-                        format!("Failed ({code})")
-                    }
-                },
-            ),
-        ),
+        ("Last command", last_command(row)),
         ("Size", format!("{} × {}", row.size.0, row.size.1)),
     ]
+}
+
+/// The last command a session's shell reported, and how it went.
+fn last_command(row: &Row) -> String {
+    let outcome = match (row.command.as_ref().map(|ran| ran.outcome), row.exit) {
+        (Some(Outcome::Running), _) => "running".to_owned(),
+        (_, Some(0)) | (Some(Outcome::Succeeded), None) => "succeeded".to_owned(),
+        (_, Some(code)) => format!("failed ({code})"),
+        (Some(Outcome::Failed), None) => "failed".to_owned(),
+        (None, None) => return "Not reported".to_owned(),
+    };
+    match &row.command {
+        Some(ran) => format!("{} — {outcome}", ran.line),
+        None => capitalized(&outcome),
+    }
+}
+
+fn capitalized(text: &str) -> String {
+    let mut letters = text.chars();
+    letters.next().map_or_else(String::new, |first| {
+        first.to_uppercase().chain(letters).collect()
+    })
 }
 
 /// How far a key moves the choice: down, up, or not at all.
@@ -609,6 +619,7 @@ mod tests {
             started_in: Some("~".to_owned()),
             created: None,
             exit: None,
+            command: None,
             size: (80, 24),
         }
     }
@@ -682,6 +693,10 @@ mod tests {
         let mut described = row(1, "vim");
         described.created = Some(now - Duration::from_secs(3 * 3600));
         described.exit = Some(1);
+        described.command = Some(roster::Ran {
+            line: "cargo test".to_owned(),
+            outcome: Outcome::Failed,
+        });
         let details = details(&described, now);
         let value = |label: &str| {
             details
@@ -694,8 +709,21 @@ mod tests {
         assert_eq!(value("Running"), Some("zsh"));
         assert_eq!(value("Created"), Some("3 h ago"));
         assert_eq!(value("Last used"), Some("Used 2 min ago"));
-        assert_eq!(value("Last command"), Some("Failed (1)"));
+        assert_eq!(value("Last command"), Some("cargo test — failed (1)"));
         assert_eq!(value("Size"), Some("80 × 24"));
+    }
+
+    #[test]
+    fn the_last_command_says_how_it_went_as_far_as_is_known() {
+        let mut shown = row(1, "zsh");
+        assert_eq!(last_command(&shown), "Not reported");
+        shown.exit = Some(0);
+        assert_eq!(last_command(&shown), "Succeeded");
+        shown.command = Some(roster::Ran {
+            line: "cargo build".to_owned(),
+            outcome: Outcome::Running,
+        });
+        assert_eq!(last_command(&shown), "cargo build — running");
     }
 
     #[test]
