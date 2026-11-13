@@ -20,7 +20,20 @@ icon, and lets settings be changed in a Preferences window.
 
 ## Install
 
-Not released yet. With Nix, build it from the repository:
+On an Apple silicon Mac, with Homebrew:
+
+```sh
+brew install --cask lambdalisue/cattery/cattery
+```
+
+Each [release](https://github.com/lambdalisue/cattery/releases) also carries
+the disk image for macOS and archives for Linux and Windows. Cattery.app is
+signed by a self-signed certificate, not by an Apple Developer ID, so a
+downloaded copy needs its quarantine removed (`xattr -dr
+com.apple.quarantine /Applications/Cattery.app`) or opening allowed in
+System Settings → Privacy & Security; the cask does this itself.
+
+With Nix (prebuilt in the `cattery` Cachix cache):
 
 ```sh
 nix profile add github:lambdalisue/cattery

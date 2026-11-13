@@ -79,6 +79,7 @@
                 ./LICENSE
                 ./crates
                 ./scripts/icns.pl
+                ./scripts/macos-app.sh
               ];
             };
             strictDeps = true;
@@ -105,19 +106,11 @@
                 ''
                 # On macOS, Cattery is an app: the Dock, Finder and Launchpad
                 # show it by its bundle's name and icon, and its windows'
-                # menu bar is named after it. The bundle's icon is the light
-                # drawing; the Dock shows the one for the theme once Cattery runs.
+                # menu bar is named after it. The release bundle is made by
+                # the same script.
                 + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+                  bash scripts/macos-app.sh "$out/bin/cattery" "${version}" "$out/Applications/Cattery.app"
                   app="$out/Applications/Cattery.app/Contents"
-                  install -Dm755 "$out/bin/cattery" "$app/MacOS/cattery"
-                  substitute assets/macos/Info.plist "$app/Info.plist" --subst-var-by VERSION "${version}"
-                  icons=$(mktemp -d)
-                  for size in 128 256 512 1024; do
-                    resvg -w "$size" -h "$size" assets/logo/cattery-icon-light.svg "$icons/$size.png"
-                  done
-                  mkdir -p "$app/Resources"
-                  perl scripts/icns.pl "$app/Resources/cattery.icns" \
-                    ic07="$icons/128.png" ic08="$icons/256.png" ic09="$icons/512.png" ic10="$icons/1024.png"
                   # The executable on PATH is the app's, so a daemon it
                   # starts is the same build as the app's windows.
                   ln -sf "$app/MacOS/cattery" "$out/bin/cattery"

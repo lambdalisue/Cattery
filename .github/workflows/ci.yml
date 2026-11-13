@@ -62,3 +62,14 @@ jobs:
   # source such an install fetches, and the only one with VERSION filled in.
   nix:
     uses: lambdalisue/nix-github-release/.github/workflows/build.yml@v0.1.1
+    with:
+      packages: cattery
+      cachix-cache: cattery
+    secrets:
+      # Pull requests read the cache but do not push into it.
+      cachix-auth-token: ${{ github.event_name != 'pull_request' && secrets.CACHIX_AUTH_TOKEN || '' }}
+
+  # The packages a release attaches, made the way the release makes them,
+  # with a placeholder version, so a release is never their first run.
+  bundle:
+    uses: ./.github/workflows/bundle.yml

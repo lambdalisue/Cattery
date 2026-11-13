@@ -1,0 +1,88 @@
+name: Bundle
+
+# Build Cattery for release and package it as a GitHub Release carries it
+# (`just bundle`): Cattery.app in a disk image on macOS, a tarball on Linux, a
+# zip on Windows. ci.yml calls it with a placeholder version so the packaging
+# is exercised before any release depends on it; release.yml calls it with
+# the tag.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: The version to stamp and to name the packages by, without a leading v
+        type: string
+        default: 0.0.0-ci
+      # Signs Cattery.app by the release identity, kept in the secrets of the
+      # environment "release"; ad hoc otherwise. Every release is signed by
+      # the same one, so an update keeps what users let the app do.
+      sign:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  bundle:
+    name: bundle (${{ matrix.name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { name: macos-aarch64, os: macos-latest }
+          # 22.04 links against an older glibc, so the binary runs on more
+          # distributions.
+          - { name: linux-x86_64, os: ubuntu-22.04 }
+          - { name: linux-aarch64, os: ubuntu-22.04-arm }
+          - { name: windows-x86_64, os: windows-latest }
+    runs-on: ${{ matrix.os }}
+    # macOS is what the Homebrew cask is made from, so it must succeed; the
+    # other packages are newer and must not hold a release back.
+    continue-on-error: ${{ matrix.name != 'macos-aarch64' }}
+    environment: ${{ inputs.sign && matrix.name == 'macos-aarch64' && 'release' || '' }}
+    timeout-minutes: 60
+    env:
+      VERSION: ${{ inputs.version }}
+    # Release builds use rustup, not Nix, so a binary never refers into
+    # /nix/store, and they start without caches, so nothing a pull request
+    # wrote can reach a published package.
+    steps:
+      - uses: actions/checkout@v7.0.1
+        with:
+          persist-credentials: false
+      - uses: taiki-e/install-action@v2.90.3
+        with:
+          tool: just
+      # felis's font shaping links against fontconfig on Linux.
+      - name: Install the libraries Cattery links against
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libfontconfig1-dev
+      # The icon file is rendered from the icon's SVG.
+      - name: Install resvg
+        if: runner.os == 'macOS'
+        run: brew install resvg
+      - name: Import the release signing identity
+        if: inputs.sign && runner.os == 'macOS'
+        run: |
+          scripts/macos/import-identity.sh "$RUNNER_TEMP/signing.keychain-db"
+          echo "CATTERY_SIGN_IDENTITY=Cattery Release" >>"$GITHUB_ENV"
+        env:
+          MACOS_SIGNING_P12: ${{ secrets.MACOS_SIGNING_P12 }}
+          MACOS_SIGNING_PASSWORD: ${{ secrets.MACOS_SIGNING_PASSWORD }}
+      # The script `just ci` also runs, so a placeholder it no longer finds
+      # fails a pull request rather than a release.
+      - name: Stamp the version
+        shell: bash
+        run: perl scripts/stamp-version.pl "$VERSION"
+      - name: Bundle
+        shell: bash
+        run: just bundle "$VERSION"
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: bundle-${{ matrix.name }}
+          path: dist/*
+          if-no-files-found: error
+          # A release attaches its packages; a pull request's only need to
+          # stay while it is reviewed.
+          retention-days: ${{ inputs.version == '0.0.0-ci' && 3 || 30 }}
