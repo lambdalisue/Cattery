@@ -77,6 +77,7 @@
                 ./Cargo.lock
                 ./assets
                 ./LICENSE
+                ./THIRD-PARTY-LICENSES.txt
                 ./crates
                 ./scripts/icns.pl
                 ./scripts/macos-app.sh
@@ -96,11 +97,12 @@
               build
               // {
                 cargoArtifacts = craneLib.buildDepsOnly build;
-                # The licences of Cattery and of the themes it ships go with
-                # it, as the themes are built into it.
+                # The licences of Cattery, of the themes it ships and of the
+                # crates it is built from go with it, as they are built into it.
                 postInstall = ''
                   licenses="$out/share/licenses/cattery"
                   install -Dm644 LICENSE "$licenses/LICENSE"
+                  install -Dm644 THIRD-PARTY-LICENSES.txt "$licenses/THIRD-PARTY-LICENSES.txt"
                   install -Dm644 crates/cattery/themes/README.md "$licenses/themes/README.md"
                   install -Dm644 -t "$licenses/themes/LICENSES" crates/cattery/themes/LICENSES/*
                 ''
@@ -148,6 +150,9 @@
               pkgs.pkg-config
               # Renders the icon's PNGs from its SVG (scripts/icon.sh).
               pkgs.resvg
+              # Writes the licences of the crates Cattery is built from
+              # (just licenses).
+              pkgs.cargo-about
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ]
             ++ linkedFor pkgs

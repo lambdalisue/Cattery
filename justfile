@@ -28,8 +28,17 @@ test:
 stamp-check:
     tmp=$(mktemp -d) && cp Cargo.toml Cargo.lock "$tmp" && perl scripts/stamp-version.pl 0.0.0-ci "$tmp"
 
+# Write the licences of the crates Cattery is built from into
+# THIRD-PARTY-LICENSES.txt, which every package ships.
+licenses:
+    cargo about generate --locked about.hbs -o THIRD-PARTY-LICENSES.txt
+
+# Fail when THIRD-PARTY-LICENSES.txt is not what Cargo.lock now makes.
+licenses-check:
+    tmp=$(mktemp) && cargo about generate --locked about.hbs -o "$tmp" && diff -q THIRD-PARTY-LICENSES.txt "$tmp" >/dev/null || { echo "THIRD-PARTY-LICENSES.txt is stale; run just licenses" >&2; exit 1; }
+
 # Everything CI runs.
-ci: fmt-check lint test stamp-check
+ci: fmt-check lint test stamp-check licenses-check
 
 # Build Cattery for release and package it as a GitHub Release carries it,
 # into dist/. Run outside the Nix shell, as the release does: a build made

@@ -25,6 +25,7 @@ trap 'rm -rf "$stage"' EXIT
 licenses() {
   mkdir -p "$1/themes/LICENSES"
   cp "$root/LICENSE" "$1/LICENSE"
+  cp "$root/THIRD-PARTY-LICENSES.txt" "$1/THIRD-PARTY-LICENSES.txt"
   cp "$root/crates/cattery/themes/README.md" "$1/themes/README.md"
   cp "$root/crates/cattery/themes/LICENSES/"* "$1/themes/LICENSES/"
 }
