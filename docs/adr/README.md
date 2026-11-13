@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-The significant decisions behind cattery, one decision per file.
+The significant decisions behind Cattery, one decision per file.
 
 ## Conventions
 

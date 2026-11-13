@@ -1,10 +1,10 @@
 # Specification
 
-What cattery promises to whoever uses it, one topic per file.
+What Cattery promises to whoever uses it, one topic per file.
 
 ## Who reads it
 
-Users of cattery, and authors of other programs that work with it. A spec
+Users of Cattery, and authors of other programs that work with it. A spec
 holds what they can rely on, not everything that is true of the code.
 
 ## What belongs in a spec
@@ -38,16 +38,16 @@ These usually fail the questions; when one appears, take it out:
 - exact strings: headers, file names
 - ordering rules, screen layout
 
-### The exception: formats cattery defines
+### The exception: formats Cattery defines
 
-A format that cattery defines and that others write — its own data files,
+A format that Cattery defines and that others write — its own data files,
 its configuration — is read by outside authors, so the spec describes it in
 full. A format someone else defines (another program's files) is not
-cattery's to promise; reading it is left to the code and the tests.
+Cattery's to promise; reading it is left to the code and the tests.
 
 ## How to write one
 
-1. Write first, briefly, what cattery promises. Leave the details out.
+1. Write first, briefly, what Cattery promises. Leave the details out.
 2. Write the details as test names. Tests named as sentences make the list of
    tests a readable specification.
 3. When review leads to a fix, do not touch the spec unless the behaviour a

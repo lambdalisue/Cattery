@@ -20,7 +20,7 @@ struct Cli {
 
 #[derive(Debug, Subcommand)]
 enum Command {
-    /// Serve the sessions cattery's windows show. cattery starts it itself.
+    /// Serve the sessions Cattery's windows show. Cattery starts it itself.
     #[command(hide = true)]
     Daemon {
         #[arg(long)]

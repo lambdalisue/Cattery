@@ -75,7 +75,7 @@ struct App {
 impl App {
     fn open(&mut self, event_loop: &ActiveEventLoop) -> anyhow::Result<()> {
         let window =
-            Arc::new(event_loop.create_window(Window::default_attributes().with_title("cattery"))?);
+            Arc::new(event_loop.create_window(Window::default_attributes().with_title("Cattery"))?);
         let size = window.inner_size();
         let config = RendererConfig {
             font_size_physical_px: Some(font_size(&window)),

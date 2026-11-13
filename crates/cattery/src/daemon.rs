@@ -1,4 +1,4 @@
-//! cattery's own felis daemon: serving it, and starting it when none
+//! Cattery's own felis daemon: serving it, and starting it when none
 //! answers.
 
 use std::path::Path;
@@ -11,7 +11,7 @@ use felis_daemon::serve::DaemonCaps;
 use felis_transport::{RetryPolicy, retry_while};
 use tokio::sync::Mutex;
 
-/// The subcommand of the cattery executable that serves the daemon.
+/// The subcommand of the `cattery` executable that serves the daemon.
 pub const SUBCOMMAND: &str = "daemon";
 
 /// Serve sessions at `socket` until the daemon is told to stop.
@@ -48,7 +48,7 @@ pub(crate) fn command(exe: &Path, socket: &Path) -> Command {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
-        // A cattery started from inside a session carries that session's
+        // A Cattery started from inside a session carries that session's
         // identity, which the daemon would hand to every session it holds.
         .env_remove("FELIS_SOCKET")
         .env_remove("FELIS_SESSION_ID")

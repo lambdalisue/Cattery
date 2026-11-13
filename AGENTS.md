@@ -1,4 +1,4 @@
-# cattery
+# Cattery
 
 A GUI terminal app built on the felis terminal daemon
 
@@ -27,8 +27,8 @@ A GUI terminal app built on the felis terminal daemon
   another repository.
 - **felis is pinned to one git revision.** Every `felis-*` dependency in
   `Cargo.toml` names the same `rev`; move them together. felis is not on
-  crates.io and promises no API, so a new revision may need cattery changed.
-  What cattery needs and felis lacks is asked of felis upstream, with a
+  crates.io and promises no API, so a new revision may need Cattery changed.
+  What Cattery needs and felis lacks is asked of felis upstream, with a
   stopgap here until it lands.
 
 ## Quality gate
@@ -48,6 +48,8 @@ macOS, Linux and Windows.
 
 - README, docs and commit messages: English
 - Code comments, log and error messages: English
+- The app is written Cattery wherever it is named in prose or shown to
+  users. The executable, the crate, paths and commit scopes stay `cattery`.
 
 ## Commits
 

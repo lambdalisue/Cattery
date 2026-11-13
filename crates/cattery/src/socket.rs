@@ -1,4 +1,4 @@
-//! Where cattery's own felis daemon listens.
+//! Where Cattery's own felis daemon listens.
 
 use std::ffi::OsString;
 use std::path::PathBuf;
@@ -7,7 +7,7 @@ use std::path::PathBuf;
 /// running two catteries side by side.
 pub const OVERRIDE_VAR: &str = "CATTERY_SOCKET";
 
-/// The socket of cattery's daemon: `overridden` when it is set and not
+/// The socket of Cattery's daemon: `overridden` when it is set and not
 /// empty, otherwise the user's default.
 ///
 /// `FELIS_SOCKET` is deliberately not read: every shell inside a session
