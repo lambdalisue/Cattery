@@ -118,6 +118,8 @@ pub enum Command {
     /// opened from.
     NewWindowHere,
     CloseWindow,
+    /// End every window's session and the app.
+    Quit,
 }
 
 /// The command `key` with `mods` held is the platform's chord for.

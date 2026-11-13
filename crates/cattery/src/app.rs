@@ -13,6 +13,7 @@ use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy}
 use winit::window::WindowId;
 
 use crate::keys::Command;
+use crate::menu::Menu;
 use crate::preferences::{Outcome, Preferences};
 use crate::terminal::{Asked, Terminal};
 use crate::{place, session, settings};
@@ -24,6 +25,8 @@ pub enum Event {
     Session(u128, session::Event),
     /// The settings file was written.
     SettingsChanged,
+    /// A command chosen from the menu.
+    Command(Command),
 }
 
 /// Open a window on a new session of the daemon at `socket`, drawn and
@@ -35,7 +38,13 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         .map(load_at_start)
         .unwrap_or_default();
     let runtime = Runtime::new()?;
-    let event_loop = EventLoop::<Event>::with_user_event().build()?;
+    let event_loop = {
+        let mut builder = EventLoop::<Event>::with_user_event();
+        // Cattery's own menu takes the place of winit's.
+        #[cfg(target_os = "macos")]
+        winit::platform::macos::EventLoopBuilderExtMacOS::with_default_menu(&mut builder, false);
+        builder.build()?
+    };
     if let Some(path) = settings_path.clone() {
         let proxy = event_loop.create_proxy();
         config_watcher::spawn(runtime.handle(), path, move || {
@@ -50,6 +59,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         settings,
         terminals: Vec::new(),
         focused: None,
+        menu: None,
         preferences: None,
         started: false,
         failure: None,
@@ -76,6 +86,7 @@ struct App {
     terminals: Vec<Terminal>,
     /// The window last focused, which a window opened "here" opens from.
     focused: Option<WindowId>,
+    menu: Option<Menu>,
     preferences: Option<Preferences>,
     /// Whether the first window was opened.
     started: bool,
@@ -92,6 +103,9 @@ impl App {
             &self.settings,
             cwd,
         )?;
+        if let Some(menu) = self.menu.as_ref() {
+            menu.attach(terminal.window());
+        }
         self.focused = Some(terminal.id());
         self.terminals.push(terminal);
         Ok(())
@@ -104,9 +118,14 @@ impl App {
                 return;
             }
             Command::CloseWindow => {
-                if let Some(id) = from {
+                if let Some(id) = from.or(self.focused) {
                     self.close(event_loop, id);
                 }
+                return;
+            }
+            // Leaving the loop closes every window, ending its session.
+            Command::Quit => {
+                event_loop.exit();
                 return;
             }
             Command::NewWindow => self.open(event_loop, place::home().as_deref()),
@@ -190,6 +209,10 @@ impl ApplicationHandler<Event> for App {
             return;
         }
         self.started = true;
+        match Menu::install(self.proxy.clone()) {
+            Ok(menu) => self.menu = Some(menu),
+            Err(err) => tracing::warn!(?err, "the menu was not shown"),
+        }
         if let Err(err) = self.open(event_loop, None) {
             self.failure = Some(err);
             event_loop.exit();
@@ -240,6 +263,7 @@ impl ApplicationHandler<Event> for App {
                 }
             }
             Event::SettingsChanged => self.reload(),
+            Event::Command(command) => self.command(event_loop, command, None),
         }
     }
 

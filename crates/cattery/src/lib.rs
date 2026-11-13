@@ -9,6 +9,7 @@ pub mod edit;
 pub mod grid;
 pub mod inserted;
 pub mod keys;
+pub mod menu;
 pub mod place;
 pub mod preferences;
 pub mod session;

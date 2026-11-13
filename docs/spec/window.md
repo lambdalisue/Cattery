@@ -25,6 +25,10 @@ On macOS, Command-N and Command-Shift-N open them. On Linux and Windows,
 where Control-letter belongs to the terminal, Control-Shift-N and
 Control-Alt-Shift-N do.
 
+The menu offers the same, with Preferences and Close Window: the menu bar
+on macOS, and each window's menu on Windows. Linux has no menu; the
+chords work there as everywhere.
+
 ## While it is open
 
 The window shows the session's screen as felis draws it, and every key
@@ -38,3 +42,4 @@ Resizing the window resizes the session to the cells that fit.
 A window closes when the program in its session ends, and closing the
 window ends the session. Command-W on macOS, and Control-Shift-W on Linux
 and Windows, close the window in front. Cattery ends with its last window.
+Quitting Cattery closes every window, ending every session.

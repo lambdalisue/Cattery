@@ -125,6 +125,10 @@ impl Terminal {
         self.window.id()
     }
 
+    pub fn window(&self) -> &Window {
+        &self.window
+    }
+
     pub fn session(&self) -> u128 {
         self.session.id
     }
