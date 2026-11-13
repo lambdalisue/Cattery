@@ -79,16 +79,20 @@ A window is called what the program in it last called it (`OSC 0` or
 
 A window closes when the program in its session ends. Closing a window
 leaves its session running in the daemon, out of sight, to be opened again
-from the Sessions window; so does quitting Cattery, for every window.
+from the session palette; so does quitting Cattery, for every window.
 Command-W on macOS, and Control-Shift-W on Linux and Windows, close the
 window in front. Cattery ends with its last window.
 
 ## Sessions
 
-The Sessions window (Command-Shift-O on macOS, Control-Shift-O on Linux and
-Windows, or the Shell menu) lists the sessions Cattery's daemon keeps,
-newest first: what each is called, where it is, and whether it is open in a
-window, in the background and for how long, or ended. A session can be
-opened in a new window — or, where a window shows it, that window is
-brought to the front — or ended, which ends the program in it. The list
-follows sessions as they start and end.
+The session palette (Command-Shift-O on macOS, Control-Shift-O on Linux and
+Windows, or Sessions… in the Shell menu) opens over the window in front and
+lists the sessions Cattery's daemon keeps, newest first, after an entry for
+a new window: what each is called, where it is, and whether it is open in a
+window, in the background and for how long, or ended. Typing narrows the
+list to the sessions whose name or place holds the letters typed, in order.
+The arrow keys choose; Return opens the session chosen in a new window, or
+brings forward the window showing it; Command-Backspace (Control-Shift-
+Backspace on Linux and Windows) ends it, and the program in it. Escape, or
+turning to another window, closes the palette. The list follows sessions as
+they start and end.

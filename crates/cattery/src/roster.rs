@@ -68,6 +68,47 @@ fn place(session: &SessionInfo, home: Option<&Path>) -> String {
     }
 }
 
+/// The rows matching `query`, best first: rows whose title or place holds the
+/// query's letters in order, ignoring case, those holding them unbroken
+/// before those holding them apart. An empty query matches every row, in
+/// the order given.
+pub fn filtered<'a>(rows: &'a [Row], query: &str) -> Vec<&'a Row> {
+    let query = query.to_lowercase();
+    let mut found: Vec<(usize, usize, &Row)> = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(at, row)| {
+            let score = [&row.title, &row.place]
+                .into_iter()
+                .filter_map(|text| distance(&text.to_lowercase(), &query))
+                .min()?;
+            Some((score, at, row))
+        })
+        .collect();
+    found.sort_by_key(|(score, at, _)| (*score, *at));
+    found.into_iter().map(|(_, _, row)| row).collect()
+}
+
+/// How far apart `query`'s letters lie in `text`, in order: none for an
+/// unbroken run; `None` where they are not all there in order.
+fn distance(text: &str, query: &str) -> Option<usize> {
+    if text.contains(query) {
+        return Some(0);
+    }
+    let mut letters = text.chars().enumerate();
+    let mut last = None;
+    let mut apart = 0;
+    for wanted in query.chars() {
+        let (at, _) = letters.find(|(_, letter)| *letter == wanted)?;
+        if let Some(last) = last {
+            apart += at - last - 1;
+        }
+        last = Some(at);
+    }
+    // Apart by nothing still is not unbroken: the run itself was not there.
+    Some(apart + 1)
+}
+
 /// `state` in words.
 pub fn describe(state: State) -> String {
     match state {
@@ -123,6 +164,46 @@ mod tests {
             input_owner: false,
             carrier: None,
         }
+    }
+
+    fn row(id: u128, title: &str, place: &str) -> Row {
+        Row {
+            id,
+            title: title.to_owned(),
+            place: place.to_owned(),
+            state: State::Shown(1),
+        }
+    }
+
+    fn ids(rows: &[&Row]) -> Vec<u128> {
+        rows.iter().map(|row| row.id).collect()
+    }
+
+    #[test]
+    fn nothing_typed_lists_every_session() {
+        let rows = [row(1, "vim", "~"), row(2, "zsh", "~/src")];
+        assert_eq!(ids(&filtered(&rows, "")), [1, 2]);
+    }
+
+    #[test]
+    fn what_is_typed_is_found_in_the_title_or_the_place() {
+        let rows = [row(1, "vim notes.md", "~"), row(2, "zsh", "~/src/cattery")];
+        assert_eq!(ids(&filtered(&rows, "VIM")), [1]);
+        assert_eq!(ids(&filtered(&rows, "cat")), [2]);
+        assert!(filtered(&rows, "emacs").is_empty());
+    }
+
+    #[test]
+    fn letters_in_order_match_even_apart() {
+        let rows = [row(1, "vim notes.md", "~")];
+        assert_eq!(ids(&filtered(&rows, "nmd")), [1]);
+        assert!(filtered(&rows, "dmn").is_empty());
+    }
+
+    #[test]
+    fn letters_together_come_before_letters_apart() {
+        let rows = [row(1, "cargo test", "~"), row(2, "cat", "~")];
+        assert_eq!(ids(&filtered(&rows, "cat")), [2, 1]);
     }
 
     #[test]

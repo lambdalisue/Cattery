@@ -310,7 +310,18 @@ impl App {
         if let Some(sessions) = self.sessions.as_ref() {
             sessions.focus();
         } else {
-            match Sessions::open(event_loop, &self.runtime) {
+            let over = self
+                .focused
+                .and_then(|id| self.terminal(id))
+                .and_then(|terminal| {
+                    let window = terminal.window();
+                    Some((
+                        window.outer_position().ok()?,
+                        window.outer_size(),
+                        window.scale_factor(),
+                    ))
+                });
+            match Sessions::open(event_loop, &self.runtime, over) {
                 Ok(sessions) => self.sessions = Some(sessions),
                 Err(err) => tracing::warn!(?err, "the Sessions window did not open"),
             }
@@ -337,12 +348,21 @@ impl App {
                 self.sessions = None;
                 return;
             }
+            SessionsAsked::New => {
+                self.sessions = None;
+                if let Err(err) = self.open(event_loop, Start::New(place::home().as_deref())) {
+                    tracing::warn!(?err, "the window did not open");
+                }
+                return;
+            }
             SessionsAsked::Open(id) => {
+                self.sessions = None;
                 if let Some(terminal) = self.terminals.iter().find(|t| t.session() == id) {
                     terminal.window().focus_window();
                 } else if let Err(err) = self.open(event_loop, Start::Attach(id)) {
                     tracing::warn!(?err, "the session was not opened");
                 }
+                return;
             }
             SessionsAsked::End(id) => {
                 if let Err(err) = self.runtime.block_on(session::end(&self.socket, id)) {
