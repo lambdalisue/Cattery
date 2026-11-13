@@ -60,6 +60,12 @@ the taskbar entry flashes.
 Images programs draw with the kitty graphics protocol are shown where they
 place them, as felis draws them.
 
+A link opens in the platform's default app when clicked with Command held
+on macOS, or Control on Linux and Windows; the pointer turns to a hand over
+one while the key is held. A link is one a program marked as such (OSC 8),
+or else a web or file URL written out as plain text. Only web, mail and file
+links open.
+
 The mouse goes to a program that asks for it — clicks, drags, motion and
 the wheel — unless Shift is held. Otherwise the wheel scrolls back through
 the session's history, as Shift with Page Up and Page Down does by half a

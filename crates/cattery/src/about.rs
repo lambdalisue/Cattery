@@ -65,10 +65,10 @@ pub fn command(target: &Target) -> Command {
                 command
             }
             Target::Url(url) => {
-                // `start` is the shell's, and its first quoted argument is
-                // the window title.
-                let mut command = Command::new("cmd");
-                command.args(["/C", "start", ""]).arg(url);
+                // Not `cmd /C start`: a link a program wrote reaches here,
+                // and cmd would read its `&` and `|` as commands of its own.
+                let mut command = Command::new("explorer");
+                command.arg(url);
                 command
             }
         }
@@ -148,5 +148,12 @@ mod tests {
             argv(&command(&Target::Edit(file))),
             ["xdg-open", "/x/config.toml"]
         );
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_hands_a_url_over_whole_and_to_no_shell() {
+        let url = "https://example.com/?a=1&calc";
+        assert_eq!(argv(&command(&Target::Url(url.into()))), ["explorer", url]);
     }
 }

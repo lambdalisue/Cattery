@@ -13,6 +13,7 @@ pub mod grid;
 pub mod icon;
 pub mod inserted;
 pub mod keys;
+pub mod links;
 pub mod look;
 pub mod menu;
 pub mod mouse;

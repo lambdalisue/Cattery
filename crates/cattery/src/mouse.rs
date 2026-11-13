@@ -36,6 +36,16 @@ pub fn to_program(reporting: bool, mods: ModifiersState) -> bool {
     reporting && !mods.shift_key()
 }
 
+/// Whether a click opens the link under it: with Command held on macOS and
+/// Control elsewhere, so a plain click still selects, and goes to programs.
+pub fn opens_links(mods: ModifiersState) -> bool {
+    if cfg!(target_os = "macos") {
+        mods.super_key()
+    } else {
+        mods.control_key()
+    }
+}
+
 /// What a turn of the wheel does.
 #[derive(Debug, PartialEq, Eq)]
 pub enum Wheel {
@@ -157,6 +167,19 @@ mod tests {
             InputMods::SHIFT | InputMods::ALT | InputMods::CTRL
         );
         assert_eq!(mods(NONE), InputMods::empty());
+    }
+
+    #[test]
+    fn a_link_opens_with_command_held_on_macos_and_control_elsewhere() {
+        let held = if cfg!(target_os = "macos") {
+            ModifiersState::SUPER
+        } else {
+            ModifiersState::CONTROL
+        };
+        assert!(opens_links(held));
+        assert!(opens_links(held | ModifiersState::SHIFT));
+        assert!(!opens_links(ModifiersState::empty()));
+        assert!(!opens_links(ModifiersState::ALT));
     }
 
     #[test]

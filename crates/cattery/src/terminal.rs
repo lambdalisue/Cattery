@@ -10,7 +10,7 @@ use felis_client_core::confirm::{ConfirmDecision, PendingConfirm, decide_confirm
 use felis_client_core::cursor_blink::BlinkClock;
 use felis_client_core::viewport::{self, ViewportIntent};
 use felis_client_core::{
-    GridPos, ImageShadow, OutgoingFrame, Selection, SelectionMode, ShadowScreen,
+    ActivationTarget, GridPos, ImageShadow, OutgoingFrame, Selection, SelectionMode, ShadowScreen,
 };
 use felis_grid::ClipboardSelection;
 use felis_grid::image_layout::ImageLayout;
@@ -28,15 +28,16 @@ use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey, PhysicalKey};
-use winit::window::{UserAttentionType, Window, WindowId};
+use winit::window::{CursorIcon, UserAttentionType, Window, WindowId};
 
+use crate::about::{self, Target};
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
 use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
 use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
-use crate::{clipboard, daemon, grid, icon, inserted, mouse, session, title};
+use crate::{clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
 
 /// Which session a window opens on.
 #[derive(Debug, Clone, Copy)]
@@ -72,6 +73,8 @@ pub struct Terminal {
     pointer: Option<PhysicalPosition<f64>>,
     /// The buttons pressed while the program was told of them.
     grabbed: Vec<MouseButton>,
+    /// Whether the pointer shows that a click opens a link.
+    over_link: bool,
     clicks: Clicks,
     /// Whether the left button is held selecting.
     selecting: bool,
@@ -177,6 +180,7 @@ impl Terminal {
             intent: ViewportIntent::default(),
             pointer: None,
             grabbed: Vec::new(),
+            over_link: false,
             clicks: Clicks::default(),
             selecting: false,
             anchored: None,
@@ -238,7 +242,10 @@ impl Terminal {
                 self.show_cursor();
                 self.redraw();
             }
-            WindowEvent::ModifiersChanged(modifiers) => self.modifiers = modifiers.state(),
+            WindowEvent::ModifiersChanged(modifiers) => {
+                self.modifiers = modifiers.state();
+                self.hover();
+            }
             WindowEvent::KeyboardInput { event, .. } => {
                 if let Some(command) = keys::command(&event.logical_key, self.modifiers) {
                     // Both the press and the release stay out of the session.
@@ -698,6 +705,9 @@ impl Terminal {
         };
         match state {
             ElementState::Pressed => {
+                if button == MouseButton::Left && self.open_link() {
+                    return;
+                }
                 if mouse::to_program(self.shadow.mouse_protocol_active(), self.modifiers) {
                     // What the program does with the click is its own;
                     // a selection left showing would be of other text.
@@ -763,6 +773,7 @@ impl Terminal {
         if before == after {
             return;
         }
+        self.hover();
         if self.selecting
             && let Some((row, col)) = after
             && let Some(mut selection) = self.selection.or(self.anchored)
@@ -779,6 +790,42 @@ impl Terminal {
             Some(button) => self.report(Some(button), MouseAction::Drag),
             None if !self.modifiers.shift_key() => self.report(None, MouseAction::Motion),
             None => {}
+        }
+    }
+
+    /// The link under the pointer, while the chord that opens links is held.
+    fn link(&self) -> Option<ActivationTarget> {
+        if !mouse::opens_links(self.modifiers) {
+            return None;
+        }
+        let ((row, col), _) = self.pointed()?;
+        links::at(&self.shadow, GridPos { row, col })
+    }
+
+    /// Open the link under the pointer, if there is one to open.
+    fn open_link(&mut self) -> bool {
+        let Some(link) = self.link() else {
+            return false;
+        };
+        let target = Target::Url(link.as_str().to_owned());
+        match about::command(&target).spawn() {
+            // Reaped aside: a browser starting up cannot hold the window.
+            Ok(mut opener) => drop(std::thread::spawn(move || opener.wait())),
+            Err(err) => tracing::warn!(?err, "the link was not opened"),
+        }
+        true
+    }
+
+    /// Show a hand over a link that a click would open.
+    fn hover(&mut self) {
+        let over = self.link().is_some();
+        if over != self.over_link {
+            self.over_link = over;
+            self.window.set_cursor(if over {
+                CursorIcon::Pointer
+            } else {
+                CursorIcon::Default
+            });
         }
     }
 
