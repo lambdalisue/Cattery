@@ -37,7 +37,7 @@ pub async fn connect(socket: &Path, exe: &Path) -> anyhow::Result<Connection> {
 }
 
 /// How `exe` is started to serve `socket`, apart from whoever started it.
-pub(crate) fn command(exe: &Path, socket: &Path) -> Command {
+pub fn command(exe: &Path, socket: &Path) -> Command {
     let mut command = Command::new(exe);
     command
         .arg(SUBCOMMAND)
@@ -98,49 +98,6 @@ mod tests {
             .collect();
         for name in ["FELIS_SOCKET", "FELIS_SESSION_ID", "NOTIFY_SOCKET"] {
             assert!(removed.contains(&OsStr::new(name)), "{name} is inherited");
-        }
-    }
-
-    #[cfg(unix)]
-    #[tokio::test(flavor = "multi_thread")]
-    async fn a_daemon_already_listening_is_connected_to_without_starting_another() {
-        let dir = tempfile::tempdir().unwrap();
-        testing::connected(&dir).await;
-    }
-}
-
-// On Windows the socket is a pipe name, which a temporary directory cannot
-// hold.
-#[cfg(all(test, unix))]
-pub(crate) mod testing {
-    use std::time::{Duration, Instant};
-
-    use std::path::PathBuf;
-
-    use super::*;
-
-    /// A connection to a daemon served in this process from `dir`.
-    ///
-    /// `connect` is handed a program that does not exist, so a connection
-    /// proves the served daemon was found rather than another started.
-    pub(crate) async fn connected(dir: &tempfile::TempDir) -> (Connection, PathBuf) {
-        // The daemon makes the directory itself, private to the user.
-        let socket = dir.path().join("cattery").join("daemon.sock");
-        let served = tokio::spawn({
-            let socket = socket.clone();
-            async move { serve(&socket).await }
-        });
-        let nowhere = dir.path().join("no-such-cattery");
-        let deadline = Instant::now() + Duration::from_secs(10);
-        loop {
-            match connect(&socket, &nowhere).await {
-                Ok(conn) => return (conn, socket),
-                Err(err) if served.is_finished() => {
-                    panic!("serving ended: {:?}; {err:#}", served.await)
-                }
-                Err(err) if Instant::now() > deadline => panic!("no connection: {err:#}"),
-                Err(_) => tokio::time::sleep(Duration::from_millis(20)).await,
-            }
         }
     }
 }

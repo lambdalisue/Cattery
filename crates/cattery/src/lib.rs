@@ -1,0 +1,11 @@
+//! Cattery: a GUI terminal app built on the felis terminal daemon.
+//!
+//! The `cattery` executable is this library's front door; the library is
+//! separate so tests can drive a daemon started as the executable starts it.
+
+pub mod app;
+pub mod daemon;
+pub mod grid;
+pub mod keys;
+pub mod session;
+pub mod socket;

@@ -1,10 +1,4 @@
-mod app;
-mod daemon;
-mod grid;
-mod keys;
-mod session;
-mod socket;
-
+use cattery::{app, daemon, socket};
 use std::path::PathBuf;
 
 use clap::{Parser, Subcommand};
