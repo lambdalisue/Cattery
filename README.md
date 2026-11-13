@@ -42,7 +42,7 @@ A window opens on your login shell. Closing it leaves the session running
 in Cattery's daemon; **Sessions…** (Command-Shift-O, or Control-Shift-O on
 Linux and Windows) lists them, to open one in a window again or to end it.
 
-The Shell menu opens more: **New Window** (Command-N) in your home
+The File menu opens more: **New Window** (Command-N) in your home
 directory, **New Window Here** (Command-Shift-N) where the shell in front
 last reported being. On Linux and Windows the chords are Control-Shift-N
 and Control-Alt-Shift-N.

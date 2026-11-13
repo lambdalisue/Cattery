@@ -31,7 +31,11 @@ Control-Alt-Shift-N do.
 
 The menu offers the same, with About Cattery, Preferences and Close
 Window: the menu bar on macOS, and each window's menu on Windows. Linux
-has no menu; the chords work there as everywhere.
+has no menu; the chords work there as everywhere. The menu also closes
+every window at once (Close All Windows, leaving their sessions running),
+reads the settings again (Reload Configuration, for an edit the watch on
+the files missed), and opens Cattery's documentation and its issue tracker
+from Help. On macOS the Window menu lists the open windows.
 
 ## While it is open
 
@@ -114,7 +118,7 @@ window in front. Cattery ends with its last window.
 ## Sessions
 
 The session palette (Command-Shift-O on macOS, Control-Shift-O on Linux and
-Windows, or Sessions… in the Shell menu) opens over the window in front and
+Windows, or Sessions… in the File menu) opens over the window in front and
 lists the sessions Cattery's daemon keeps, newest first, after an entry for
 a new window: what each is called, where it is, and whether it is open in a
 window, in the background and for how long, or ended. Typing narrows the

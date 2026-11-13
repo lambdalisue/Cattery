@@ -122,6 +122,14 @@ pub enum Command {
     /// opened from.
     NewWindowHere,
     CloseWindow,
+    /// Close every window, leaving their sessions running.
+    CloseAllWindows,
+    /// Read the settings and appearance files again.
+    Reload,
+    /// Cattery's documentation.
+    Help,
+    /// Where problems with Cattery are reported.
+    ReportIssue,
     /// The window listing the sessions the daemon keeps.
     Sessions,
     /// Search the session's history.

@@ -13,7 +13,11 @@ use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 15] = [
+const COMMANDS: [(Command, &str); 19] = [
+    (Command::CloseAllWindows, "close-all-windows"),
+    (Command::Reload, "reload"),
+    (Command::Help, "help"),
+    (Command::ReportIssue, "report-issue"),
     (Command::Prompt(PromptJump::Previous), "previous-prompt"),
     (Command::Prompt(PromptJump::Next), "next-prompt"),
     (Command::Find, "find"),
@@ -63,9 +67,19 @@ impl Menu {
                     _ = proxy.send_event(Event::Command(command));
                 }
             }));
-            let menu = platform::build()?;
             #[cfg(target_os = "macos")]
-            menu.init_for_nsapp();
+            let menu = {
+                let (menu, window, help) = platform::build()?;
+                menu.init_for_nsapp();
+                // Only once the menu bar is the app's: before, muda finds no
+                // menu of its own to hand AppKit, and the window list and the
+                // Help search field are left out.
+                window.set_as_windows_menu_for_nsapp();
+                help.set_as_help_menu_for_nsapp();
+                menu
+            };
+            #[cfg(target_os = "windows")]
+            let menu = platform::build()?;
             Ok(Self { _menu: menu })
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -111,7 +125,7 @@ mod platform {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn build() -> muda::Result<Menu> {
+    pub fn build() -> muda::Result<(Menu, Submenu, Submenu)> {
         let cmd = Modifiers::META;
         let app = Submenu::with_items(
             "Cattery",
@@ -124,6 +138,11 @@ mod platform {
                     "Preferences…",
                     Some((cmd, Code::Comma)),
                 ),
+                &item(
+                    Command::Reload,
+                    "Reload Configuration",
+                    Some((cmd | Modifiers::SHIFT, Code::Comma)),
+                ),
                 &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::services(None),
                 &PredefinedMenuItem::separator(),
@@ -135,7 +154,7 @@ mod platform {
             ],
         )?;
         let shell = Submenu::with_items(
-            "Shell",
+            "File",
             true,
             &[
                 &item(Command::NewWindow, "New Window", Some((cmd, Code::KeyN))),
@@ -154,6 +173,11 @@ mod platform {
                     Command::CloseWindow,
                     "Close Window",
                     Some((cmd, Code::KeyW)),
+                ),
+                &item(
+                    Command::CloseAllWindows,
+                    "Close All Windows",
+                    Some((cmd | Modifiers::ALT, Code::KeyW)),
                 ),
             ],
         )?;
@@ -205,8 +229,16 @@ mod platform {
                 &PredefinedMenuItem::bring_all_to_front(None),
             ],
         )?;
-        window.set_as_windows_menu_for_nsapp();
-        Menu::with_items(&[&app, &shell, &edit, &view, &window])
+        let help = Submenu::with_items(
+            "Help",
+            true,
+            &[
+                &item(Command::Help, "Cattery Help", None),
+                &item(Command::ReportIssue, "Report an Issue…", None),
+            ],
+        )?;
+        let menu = Menu::with_items(&[&app, &shell, &edit, &view, &window, &help])?;
+        Ok((menu, window, help))
     }
 
     #[cfg(target_os = "windows")]
@@ -237,12 +269,14 @@ mod platform {
                     "&Preferences…",
                     Some((Modifiers::CONTROL, Code::Comma)),
                 ),
+                &item(Command::Reload, "&Reload Configuration", None),
                 &PredefinedMenuItem::separator(),
                 &item(
                     Command::CloseWindow,
                     "&Close Window",
                     Some((ctrl_shift, Code::KeyW)),
                 ),
+                &item(Command::CloseAllWindows, "Close &All Windows", None),
                 &item(Command::Quit, "E&xit", None),
             ],
         )?;
@@ -291,7 +325,12 @@ mod platform {
         let help = Submenu::with_items(
             "&Help",
             true,
-            &[&item(Command::About, "&About Cattery", None)],
+            &[
+                &item(Command::Help, "Cattery &Help", None),
+                &item(Command::ReportIssue, "&Report an Issue…", None),
+                &PredefinedMenuItem::separator(),
+                &item(Command::About, "&About Cattery", None),
+            ],
         )?;
         Menu::with_items(&[&file, &edit, &view, &help])
     }
@@ -320,6 +359,10 @@ mod tests {
             Command::Zoom(Zoom::Reset),
             Command::Prompt(PromptJump::Previous),
             Command::Prompt(PromptJump::Next),
+            Command::CloseAllWindows,
+            Command::Reload,
+            Command::Help,
+            Command::ReportIssue,
         ] {
             assert_eq!(super::command(id(command)), Some(command));
         }

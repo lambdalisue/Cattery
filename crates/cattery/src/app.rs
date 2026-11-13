@@ -12,6 +12,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop, EventLoopProxy};
 use winit::window::{Theme, WindowId};
 
+use crate::about;
 use crate::appearance::{self, Appearance};
 use crate::clipboard;
 use crate::keys::Command;
@@ -163,6 +164,28 @@ impl App {
             Command::CloseWindow => {
                 if let Some(id) = from.or(self.focused) {
                     self.close(event_loop, id);
+                }
+                return;
+            }
+            Command::CloseAllWindows => {
+                let ids: Vec<WindowId> = self.terminals.iter().map(Terminal::id).collect();
+                for id in ids {
+                    self.close(event_loop, id);
+                }
+                return;
+            }
+            Command::Reload => {
+                self.reload();
+                return;
+            }
+            Command::Help | Command::ReportIssue => {
+                let url = if command == Command::Help {
+                    format!("{}#readme", about::REPOSITORY)
+                } else {
+                    format!("{}/issues", about::REPOSITORY)
+                };
+                if let Err(err) = about::command(&about::Target::Url(url)).spawn() {
+                    tracing::warn!(?err, "the page was not opened");
                 }
                 return;
             }
@@ -411,6 +434,13 @@ impl ApplicationHandler<Event> for App {
             return;
         }
         self.started = true;
+        // One window shows one session, and macOS's own tabs would group
+        // windows without Cattery knowing; its tab bar items go with them.
+        #[cfg(target_os = "macos")]
+        {
+            use winit::platform::macos::ActiveEventLoopExtMacOS as _;
+            event_loop.set_allows_automatic_window_tabbing(false);
+        }
         self.system = event_loop.system_theme();
         crate::icon::show_in_dock(self.appearance.look(self.system));
         self.drawn = self.colored();
