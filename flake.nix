@@ -78,6 +78,7 @@
                 ./assets
                 ./LICENSE
                 ./crates
+                ./scripts/icns.pl
               ];
             };
             strictDeps = true;
@@ -101,7 +102,28 @@
                   install -Dm644 LICENSE "$licenses/LICENSE"
                   install -Dm644 crates/cattery/themes/README.md "$licenses/themes/README.md"
                   install -Dm644 -t "$licenses/themes/LICENSES" crates/cattery/themes/LICENSES/*
+                ''
+                # On macOS, Cattery is an app: the Dock, Finder and Launchpad
+                # show it by its bundle's name and icon, and its windows'
+                # menu bar is named after it. The bundle's icon is the light
+                # drawing; the Dock shows the one for the theme once Cattery runs.
+                + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+                  app="$out/Applications/Cattery.app/Contents"
+                  install -Dm755 "$out/bin/cattery" "$app/MacOS/cattery"
+                  substitute assets/macos/Info.plist "$app/Info.plist" --subst-var-by VERSION "${version}"
+                  icons=$(mktemp -d)
+                  for size in 128 256 512 1024; do
+                    resvg -w "$size" -h "$size" assets/logo/cattery-icon-light.svg "$icons/$size.png"
+                  done
+                  mkdir -p "$app/Resources"
+                  perl scripts/icns.pl "$app/Resources/cattery.icns" \
+                    ic07="$icons/128.png" ic08="$icons/256.png" ic09="$icons/512.png" ic10="$icons/1024.png"
+                  # The executable on PATH is the app's, so a daemon it
+                  # starts is the same build as the app's windows.
+                  ln -sf "$app/MacOS/cattery" "$out/bin/cattery"
                 '';
+                nativeBuildInputs =
+                  build.nativeBuildInputs ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.resvg ];
                 postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
                   wrapProgram "$out/bin/cattery" \
                     --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}" \

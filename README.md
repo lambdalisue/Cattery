@@ -21,7 +21,15 @@ icon, and lets settings be changed in a Preferences window.
 
 ## Install
 
-Not released yet.
+Not released yet. With Nix, build it from the repository:
+
+```sh
+nix profile add github:lambdalisue/cattery
+```
+
+On macOS the package holds `Applications/Cattery.app`, which Finder,
+Launchpad and the Dock show as Cattery; the `cattery` on your `PATH` is the
+same app.
 
 ## Usage
 
