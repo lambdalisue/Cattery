@@ -27,6 +27,8 @@ directories = "6.0.0"
 egui = { version = "0.37.0", features = ["default_fonts"] }
 egui-wgpu = { version = "0.37.0", features = ["winit"] }
 fontdb = "0.24.0"
+objc2 = "0.6.5"
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange"] }
 egui-winit = "0.37.0"
 rustix = { version = "1.1.6", features = ["process"] }
 shell-words = "1.1.1"

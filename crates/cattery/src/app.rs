@@ -16,12 +16,13 @@ use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::UnboundedSender;
 use winit::application::ApplicationHandler;
-use winit::dpi::PhysicalSize;
-use winit::event::WindowEvent;
+use winit::dpi::{PhysicalPosition, PhysicalSize};
+use winit::event::{Ime, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow, EventLoop};
-use winit::keyboard::ModifiersState;
+use winit::keyboard::{ModifiersState, PhysicalKey};
 use winit::window::{Window, WindowId};
 
+use crate::inserted;
 use crate::keys::{self, Stroke};
 use crate::preferences::{Outcome, Preferences};
 use crate::settings::{self, Changes};
@@ -85,6 +86,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         modifiers: ModifiersState::empty(),
         focused: true,
         preferences: None,
+        inserted_for: None,
         ended: false,
         failure: None,
     };
@@ -116,6 +118,9 @@ struct App {
     modifiers: ModifiersState,
     focused: bool,
     preferences: Option<Preferences>,
+    /// The key an input method inserted text for, whose release the session
+    /// is not sent.
+    inserted_for: Option<PhysicalKey>,
     /// Whether the program in the session has ended on its own.
     ended: bool,
     failure: Option<anyhow::Error>,
@@ -146,6 +151,9 @@ impl App {
             config,
             None,
         ))?;
+        // winit hands keys to no input method until a window asks.
+        window.set_ime_allowed(true);
+        inserted::watch(&window);
         self.renderer = Some(renderer);
         self.window = Some(window);
         self.send(OutgoingFrame::ordered(&colors));
@@ -282,6 +290,37 @@ impl App {
         if renderer.take_glyph_repaint_request() {
             self.redraw();
         }
+        self.place_input_method();
+    }
+
+    /// Tell the platform where the cursor is, so an input method shows
+    /// its candidates beside it.
+    fn place_input_method(&self) {
+        let (Some(window), Some(renderer)) = (self.window.as_ref(), self.renderer.as_ref()) else {
+            return;
+        };
+        let cell = renderer.cell_metrics();
+        let cursor = self.shadow.screen().cursor();
+        let (x, y) = renderer.content_origin_px();
+        window.set_ime_cursor_area(
+            PhysicalPosition::new(
+                f64::from(x) + f64::from(cursor.col) * f64::from(cell.width),
+                f64::from(y) + f64::from(cursor.row) * f64::from(cell.height),
+            ),
+            PhysicalSize::new(cell.width, cell.height),
+        );
+    }
+
+    fn compose(&mut self, ime: &Ime) {
+        if let Some(input) = keys::committed(ime) {
+            self.show_cursor();
+            self.send(OutgoingFrame::input(&input));
+        }
+        let cursor = self.shadow.screen().cursor();
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.set_preedit(keys::composing(ime, (cursor.row, cursor.col)));
+        }
+        self.redraw();
     }
 
     /// Whether the cursor is on screen in a focused window, where blinking
@@ -391,11 +430,26 @@ impl ApplicationHandler<Event> for App {
             }
             WindowEvent::KeyboardInput { event, .. } => {
                 self.show_cursor();
+                if event.state.is_pressed() {
+                    let inserted = inserted::take();
+                    if let Some(input) =
+                        keys::inserted_instead(inserted.as_deref(), event.text.as_deref())
+                    {
+                        self.inserted_for = Some(event.physical_key);
+                        self.send(OutgoingFrame::input(&input));
+                        return;
+                    }
+                } else if self.inserted_for == Some(event.physical_key) {
+                    // The key was never pressed as far as the session knows.
+                    self.inserted_for = None;
+                    return;
+                }
                 self.send(OutgoingFrame::input(&keys::input(
                     &Stroke::from(&event),
                     self.modifiers,
                 )));
             }
+            WindowEvent::Ime(ime) => self.compose(&ime),
             WindowEvent::RedrawRequested => self.draw(),
             _ => {}
         }

@@ -16,8 +16,10 @@ Cattery's sessions, and Cattery does not see theirs.
 ## While it is open
 
 The window shows the session's screen as felis draws it, and every key
-typed in the window reaches the session. Resizing the window resizes the
-session to the cells that fit.
+typed in the window reaches the session. Text typed through the platform's
+input method is shown at the cursor while it is composed, with the input
+method's candidates beside it, and reaches the session once committed.
+Resizing the window resizes the session to the cells that fit.
 
 ## Closing
 

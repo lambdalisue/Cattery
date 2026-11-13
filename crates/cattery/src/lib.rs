@@ -7,6 +7,7 @@ pub mod app;
 pub mod daemon;
 pub mod edit;
 pub mod grid;
+pub mod inserted;
 pub mod keys;
 pub mod preferences;
 pub mod session;

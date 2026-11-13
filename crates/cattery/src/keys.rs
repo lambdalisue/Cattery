@@ -7,7 +7,8 @@
 use felis_client_core::{FKey, Modifiers, NamedKey};
 use felis_protocol::limits::MAX_KEY_TEXT_BYTES;
 use felis_protocol::messages::{InputMsg, Key, KeyEvent, KeyEventKind, KeyLocation};
-use winit::event::ElementState;
+use felis_render_core::overlay::PreeditOverlay;
+use winit::event::{ElementState, Ime};
 use winit::keyboard::{
     Key as WinitKey, KeyLocation as WinitKeyLocation, ModifiersState, NamedKey as WinitNamedKey,
 };
@@ -118,6 +119,39 @@ pub fn opens_preferences(key: &WinitKey, mods: ModifiersState) -> bool {
     mods == primary && matches!(key, WinitKey::Character(c) if c == ",")
 }
 
+/// The input an input method's event sends: its committed text, if any.
+pub fn committed(ime: &Ime) -> Option<InputMsg> {
+    // Committed text is final: no modifier applies to it, so it reaches
+    // the program as its bytes, as felis's own window sends it.
+    match ime {
+        Ime::Commit(text) if !text.is_empty() => Some(InputMsg::KeyBytes(text.as_bytes().to_vec())),
+        _ => None,
+    }
+}
+
+/// The text being composed, to draw at the cursor at `at`; `None` once
+/// nothing is being composed.
+pub fn composing(ime: &Ime, at: (u16, u16)) -> Option<PreeditOverlay> {
+    match ime {
+        Ime::Preedit(text, cursor) if !text.is_empty() => Some(PreeditOverlay {
+            anchor: at,
+            text: text.clone(),
+            cursor: *cursor,
+        }),
+        _ => None,
+    }
+}
+
+/// What a keystroke sends in place of its key when an input method
+/// inserted `inserted` for it without composing it first; `None` when the
+/// key itself is to be sent, as when the inserted text is the key's own.
+pub fn inserted_instead(inserted: Option<&str>, typed: Option<&str>) -> Option<InputMsg> {
+    let inserted = inserted.filter(|text| {
+        !text.is_empty() && !text.chars().any(char::is_control) && Some(*text) != typed
+    })?;
+    Some(InputMsg::KeyBytes(inserted.as_bytes().to_vec()))
+}
+
 #[cfg(test)]
 mod tests {
     use winit::keyboard::SmolStr;
@@ -172,6 +206,74 @@ mod tests {
     #[test]
     fn the_chord_on_another_key_is_typed() {
         assert!(!opens_preferences(&character("."), primary()));
+    }
+
+    #[test]
+    fn committed_text_is_sent_as_it_is() {
+        let ime = Ime::Commit("日本語".to_owned());
+        assert_eq!(
+            committed(&ime),
+            Some(InputMsg::KeyBytes("日本語".as_bytes().to_vec()))
+        );
+    }
+
+    #[test]
+    fn an_empty_commit_sends_nothing() {
+        // Some input methods commit nothing when composing is cancelled.
+        assert_eq!(committed(&Ime::Commit(String::new())), None);
+    }
+
+    #[test]
+    fn composing_sends_nothing() {
+        assert_eq!(
+            committed(&Ime::Preedit("にほ".to_owned(), Some((0, 6)))),
+            None
+        );
+    }
+
+    #[test]
+    fn text_being_composed_is_drawn_at_the_cursor() {
+        let overlay = composing(&Ime::Preedit("にほ".to_owned(), Some((3, 6))), (4, 10)).unwrap();
+        assert_eq!(overlay.anchor, (4, 10));
+        assert_eq!(overlay.text, "にほ");
+        assert_eq!(overlay.cursor, Some((3, 6)));
+    }
+
+    #[test]
+    fn nothing_composed_draws_nothing() {
+        for ime in [
+            Ime::Preedit(String::new(), None),
+            Ime::Commit("日本".to_owned()),
+            Ime::Enabled,
+            Ime::Disabled,
+        ] {
+            assert!(composing(&ime, (0, 0)).is_none(), "{ime:?}");
+        }
+    }
+
+    #[test]
+    fn text_an_input_method_inserts_for_a_key_is_sent_instead_of_it() {
+        assert_eq!(
+            inserted_instead(Some("あ"), Some("a")),
+            Some(InputMsg::KeyBytes("あ".as_bytes().to_vec())),
+        );
+    }
+
+    #[test]
+    fn a_key_inserting_its_own_character_is_sent_as_a_key() {
+        assert_eq!(inserted_instead(Some("a"), Some("a")), None);
+    }
+
+    #[test]
+    fn a_key_nothing_was_inserted_for_is_sent_as_a_key() {
+        assert_eq!(inserted_instead(None, Some("a")), None);
+    }
+
+    #[test]
+    fn inserted_control_characters_are_left_to_the_key() {
+        assert_eq!(inserted_instead(Some("\r"), Some("\r")), None);
+        assert_eq!(inserted_instead(Some("\t"), None), None);
+        assert_eq!(inserted_instead(Some(""), Some("a")), None);
     }
 
     #[test]
