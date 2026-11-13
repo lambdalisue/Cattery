@@ -3,6 +3,7 @@
 //! through a queue.
 
 use std::path::Path;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use anyhow::Context as _;
@@ -10,7 +11,12 @@ use anyhow::Context as _;
 use felis_client_core::config::ShellConfig;
 use felis_client_core::{AttachIntent, Carrier, Connection, Offer, OutgoingFrame, launch_args};
 use felis_protocol::MessageKind;
-use felis_protocol::messages::{GridMsg, ImageMsg, PushMsg, SessionInfo, SessionToDaemonMsg};
+use felis_protocol::codec::WireCodec;
+use felis_protocol::messages::{
+    ConnToClientMsg, ConnToDaemonMsg, Correlation, GridMsg, ImageMsg, PushMsg, SearchOptions,
+    SearchSource, SearchToClientMsg, SearchToDaemonMsg, SessionInfo, SessionToDaemonMsg, StreamId,
+    Subject,
+};
 use felis_transport::{ClientDriver, Delivery, Endpoint, Incoming, OwnedFrame};
 use tokio::sync::mpsc::{self, UnboundedSender};
 use tokio::task::JoinHandle;
@@ -22,6 +28,11 @@ pub enum Event {
     Grid(GridMsg),
     /// An image a program drew, or a change to one.
     Image(ImageMsg),
+    /// A match the search on this stream found.
+    Found(StreamId, SearchToClientMsg),
+    /// The search on this stream found its last match, how many in all, or
+    /// failed, why.
+    SearchEnded(StreamId, Result<u32, String>),
     /// The program in the session ended.
     Exited,
     /// The connection to the daemon ended.
@@ -76,6 +87,9 @@ pub struct Link {
     pub id: u128,
     outgoing: UnboundedSender<OutgoingFrame>,
     writer: JoinHandle<()>,
+    /// Shared with the reader: streams the window opens must be known to
+    /// the reader before their first item arrives.
+    driver: Arc<Mutex<ClientDriver>>,
 }
 
 impl Link {
@@ -83,6 +97,35 @@ impl Link {
         // A closed queue means the connection ended, which the reader
         // reports on its own.
         _ = self.outgoing.send(frame);
+    }
+
+    /// Search the session's history for `query`; the stream its matches
+    /// arrive on, as [`Event::Found`] and then [`Event::SearchEnded`].
+    pub fn search(&self, query: &str) -> anyhow::Result<StreamId> {
+        let msg = SearchToDaemonMsg::Query {
+            query: query.to_owned(),
+            options: SearchOptions::default(),
+            source: SearchSource::Scrollback,
+            session: None,
+        };
+        // Checked before a stream is opened: an id opened for a query never
+        // sent would leave the window and the daemon counting apart.
+        WireCodec::validate(&msg)?;
+        let stream = lock(&self.driver).open_stream()?;
+        self.send(OutgoingFrame::correlated(
+            &msg,
+            Correlation::stream(stream),
+        )?);
+        Ok(stream)
+    }
+
+    /// Stop the search on `stream`, so the daemon walks no history nobody
+    /// reads.
+    pub fn cancel(&self, stream: StreamId) {
+        lock(&self.driver).cancel_stream(stream);
+        if let Ok(frame) = OutgoingFrame::ordered(&ConnToDaemonMsg::Cancel { stream_id: stream }) {
+            self.send(frame);
+        }
     }
 
     /// Leave the session running without this window, once what is queued
@@ -106,9 +149,11 @@ pub fn pump(conn: Connection, id: u128, notify: impl Fn(Event) -> bool + Send + 
     let Connection {
         mut reader,
         mut writer,
-        mut driver,
+        driver,
         ..
     } = conn;
+    let driver = Arc::new(Mutex::new(driver));
+    let read = Arc::clone(&driver);
     tokio::spawn(async move {
         loop {
             let frame = match reader.next_frame().await {
@@ -119,7 +164,8 @@ pub fn pump(conn: Connection, id: u128, notify: impl Fn(Event) -> bool + Send + 
                     break;
                 }
             };
-            match route(&mut driver, &frame) {
+            let routed = route(&mut lock(&read), &frame);
+            match routed {
                 Route::Skip => {}
                 Route::Stop => break,
                 Route::Event(event) => {
@@ -148,7 +194,15 @@ pub fn pump(conn: Connection, id: u128, notify: impl Fn(Event) -> bool + Send + 
         id,
         outgoing,
         writer: writing,
+        driver,
     }
+}
+
+/// The driver, whichever task held it last.
+fn lock(driver: &Mutex<ClientDriver>) -> std::sync::MutexGuard<'_, ClientDriver> {
+    driver
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 enum Route {
@@ -161,8 +215,16 @@ fn route(driver: &mut ClientDriver, frame: &OwnedFrame) -> Route {
     let payload = match driver.classify(frame) {
         Ok(Incoming::Payload(payload)) => payload,
         Ok(Incoming::CancelIgnored { .. }) => return Route::Skip,
-        // A window opens no stream and makes no request after attaching,
-        // so any other control message is one it cannot follow.
+        Ok(Incoming::Control(ConnToClientMsg::End { stream_id, count })) => {
+            return Route::Event(Event::SearchEnded(stream_id, Ok(count)));
+        }
+        Ok(Incoming::Control(ConnToClientMsg::Error {
+            subject: Subject::Stream(stream_id),
+            detail,
+            ..
+        })) => return Route::Event(Event::SearchEnded(stream_id, Err(detail))),
+        // A window makes no request after attaching, so any other control
+        // message is one it cannot follow.
         Ok(Incoming::Control(msg)) => {
             tracing::warn!(?msg, "unexpected control message from the daemon");
             return Route::Stop;
@@ -178,6 +240,18 @@ fn route(driver: &mut ClientDriver, frame: &OwnedFrame) -> Route {
             Ok(_) => Route::Skip,
             Err(err) => {
                 tracing::warn!(?err, "a screen update from the daemon was refused");
+                Route::Stop
+            }
+        },
+        MessageKind::Search => match driver.decode::<SearchToClientMsg>(&payload) {
+            Ok(Delivery::Deliver(delivered)) => {
+                let stream = delivered.stream();
+                Route::Event(Event::Found(stream, delivered.msg))
+            }
+            // A match that crossed the window's cancel on the wire.
+            Ok(_) => Route::Skip,
+            Err(err) => {
+                tracing::warn!(?err, "a match from the daemon was refused");
                 Route::Stop
             }
         },

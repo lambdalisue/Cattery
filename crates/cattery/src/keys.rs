@@ -124,6 +124,8 @@ pub enum Command {
     CloseWindow,
     /// The window listing the sessions the daemon keeps.
     Sessions,
+    /// Search the session's history.
+    Find,
     /// Copy the selection.
     Copy,
     /// Paste what the clipboard holds.
@@ -155,6 +157,7 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 Command::Sessions,
             ),
             ("c", ModifiersState::SUPER, Command::Copy),
+            ("f", ModifiersState::SUPER, Command::Find),
             ("v", ModifiersState::SUPER, Command::Paste),
         ]
     } else {
@@ -186,6 +189,11 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 "c",
                 ModifiersState::CONTROL.union(ModifiersState::SHIFT),
                 Command::Copy,
+            ),
+            (
+                "f",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::Find,
             ),
             (
                 "v",
@@ -328,6 +336,7 @@ mod tests {
             ("N", SUPER.union(SHIFT), Command::NewWindowHere),
             ("w", SUPER, Command::CloseWindow),
             ("c", SUPER, Command::Copy),
+            ("f", SUPER, Command::Find),
             ("O", SUPER.union(SHIFT), Command::Sessions),
             ("v", SUPER, Command::Paste),
         ] {
@@ -348,6 +357,7 @@ mod tests {
             ("N", CONTROL.union(SHIFT).union(ALT), Command::NewWindowHere),
             ("W", CONTROL.union(SHIFT), Command::CloseWindow),
             ("C", CONTROL.union(SHIFT), Command::Copy),
+            ("F", CONTROL.union(SHIFT), Command::Find),
             ("O", CONTROL.union(SHIFT), Command::Sessions),
             ("V", CONTROL.union(SHIFT), Command::Paste),
         ] {

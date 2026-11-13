@@ -168,6 +168,12 @@ impl App {
                 self.open_sessions(event_loop);
                 return;
             }
+            Command::Find => {
+                if let Some(terminal) = self.terminal_mut(from) {
+                    terminal.find();
+                }
+                return;
+            }
             Command::Copy => {
                 if let Some(text) = self.terminal_mut(from).and_then(|terminal| terminal.copy()) {
                     clipboard::write(&text);

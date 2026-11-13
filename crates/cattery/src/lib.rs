@@ -19,6 +19,7 @@ pub mod mouse;
 pub mod place;
 pub mod preferences;
 pub mod roster;
+pub mod search;
 pub mod select;
 pub mod session;
 pub mod sessions;

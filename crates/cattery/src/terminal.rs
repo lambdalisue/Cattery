@@ -17,9 +17,9 @@ use felis_grid::image_layout::ImageLayout;
 use felis_protocol::ImageId;
 use felis_protocol::messages::{
     GridMsg, ImageMsg, ImageTarget, InputMsg, Key, KeyEventKind, MouseAction, MouseButton,
-    MouseEvent, SessionInfo, SourceRect,
+    MouseEvent, SessionInfo, SourceRect, StreamId,
 };
-use felis_render_core::overlay::ConfirmOverlay;
+use felis_render_core::overlay::{ConfirmOverlay, SearchOverlay};
 use felis_render_core::palette::Theme;
 use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
 use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
@@ -27,11 +27,12 @@ use tokio::runtime::Runtime;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
-use winit::keyboard::{ModifiersState, PhysicalKey};
+use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey, PhysicalKey};
 use winit::window::{UserAttentionType, Window, WindowId};
 
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
+use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
 use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
@@ -95,6 +96,9 @@ pub struct Terminal {
     size: f32,
     /// The settings' `window.title_prefix`, which every title starts with.
     title_prefix: Option<String>,
+    search: Search,
+    /// The stream the search's matches arrive on, while they do.
+    searching: Option<StreamId>,
     /// The images the session's programs drew, and where they go on screen.
     images: ImageShadow,
     layout: ImageLayout,
@@ -185,6 +189,8 @@ impl Terminal {
             inserted_for: None,
             title_prefix: settings.window.title_prefix.clone(),
             size: settings::font_size(settings),
+            search: Search::default(),
+            searching: None,
             images: ImageShadow::new(),
             layout: ImageLayout::new(),
             ended: false,
@@ -288,6 +294,25 @@ impl Terminal {
                 self.redraw();
                 Ok(true)
             }
+            session::Event::Found(stream, msg) => {
+                if self.searching == Some(stream) {
+                    let first = self.search.current().is_none();
+                    self.search.found(msg.into());
+                    if first {
+                        self.show_match();
+                    }
+                    self.redraw();
+                }
+                Ok(true)
+            }
+            session::Event::SearchEnded(stream, ended) => {
+                if self.searching == Some(stream) {
+                    self.searching = None;
+                    self.search.ended(ended.err());
+                    self.redraw();
+                }
+                Ok(true)
+            }
             session::Event::Image(msg) => {
                 self.images.apply(&msg)?;
                 // A part of an image still arriving changes nothing drawn yet.
@@ -383,6 +408,108 @@ impl Terminal {
         self.fit(self.window.inner_size());
     }
 
+    /// Open the search bar, to search the session's history.
+    pub fn find(&mut self) {
+        self.stop_searching();
+        self.search.begin();
+        self.redraw();
+    }
+
+    /// Take a key while the search bar is open; whether it was the bar's.
+    fn search_key(&mut self, event: &winit::event::KeyEvent) -> bool {
+        if self.search.mode == search::Mode::Off || !event.state.is_pressed() {
+            return self.search.mode != search::Mode::Off && !event.state.is_pressed();
+        }
+        let named = match &event.logical_key {
+            WinitKey::Named(named) => Some(*named),
+            _ => None,
+        };
+        match (&self.search.mode, named) {
+            (_, Some(NamedKey::Escape)) => self.close_search(),
+            (search::Mode::Typing, Some(NamedKey::Enter)) => {
+                if self.search.query.is_empty() {
+                    self.close_search();
+                } else {
+                    self.send_search();
+                }
+            }
+            (search::Mode::Typing, Some(NamedKey::Backspace)) => {
+                self.search.query.pop();
+            }
+            (search::Mode::Typing, _) => {
+                let text = event.text.as_deref().unwrap_or_default();
+                if text.chars().any(char::is_control) {
+                    return true;
+                }
+                self.search.query.push_str(text);
+            }
+            (search::Mode::Shown, Some(NamedKey::Enter)) => self.step_match(Step::Older),
+            (search::Mode::Shown, _) => match event.text.as_deref() {
+                Some("n") => self.step_match(Step::Older),
+                Some("N") => self.step_match(Step::Newer),
+                // Any other key leaves the search and reaches the program.
+                _ => {
+                    self.close_search();
+                    return false;
+                }
+            },
+            (search::Mode::Off, _) => return false,
+        }
+        self.redraw();
+        true
+    }
+
+    fn send_search(&mut self) {
+        self.stop_searching();
+        let Some(link) = self.link.as_ref() else {
+            return;
+        };
+        match link.search(&self.search.query) {
+            Ok(stream) => {
+                self.searching = Some(stream);
+                self.search.sent();
+            }
+            Err(err) => {
+                self.search.sent();
+                self.search.ended(Some(format!("{err:#}")));
+            }
+        }
+    }
+
+    fn step_match(&mut self, step: Step) {
+        if self.search.step(step).is_some() {
+            self.show_match();
+        }
+    }
+
+    /// Bring the match chosen into view.
+    fn show_match(&mut self) {
+        let Some(hit) = self.search.current() else {
+            return;
+        };
+        let rows = self.shadow.screen().rows();
+        let max = self.shadow.viewport_max().saturating_sub(u32::from(rows));
+        let (lines_from_bottom, anchor) =
+            search::view_of(hit, self.shadow.viewport_anchor(), rows, max);
+        self.input(InputMsg::Viewport {
+            lines_from_bottom,
+            anchor,
+        });
+    }
+
+    fn close_search(&mut self) {
+        self.stop_searching();
+        self.search = Search::default();
+        self.renderer.set_search_overlay(None);
+        self.redraw();
+    }
+
+    fn stop_searching(&mut self) {
+        if let (Some(stream), Some(link)) = (self.searching.take(), self.link.as_ref()) {
+            link.cancel(stream);
+        }
+    }
+
     /// The selected text, if any is selected.
     pub fn copy(&self) -> Option<String> {
         self.selection
@@ -450,6 +577,9 @@ impl Terminal {
 
     fn type_key(&mut self, event: &winit::event::KeyEvent) {
         self.show_cursor();
+        if self.search_key(event) {
+            return;
+        }
         if self.pending.is_some() {
             if event.state.is_pressed() {
                 self.answer(event.text.as_deref());
@@ -710,6 +840,17 @@ impl Terminal {
         // A screen still being sent whole would flash half drawn.
         if self.shadow.is_rehydrating() {
             return;
+        }
+        if self.search.mode != search::Mode::Off {
+            let screen = self.shadow.screen();
+            self.renderer.set_search_overlay(Some(SearchOverlay {
+                label: self.search.label(),
+                visible_hits: self.search.spans(
+                    self.shadow.viewport_anchor(),
+                    self.shadow.viewport(),
+                    screen.rows(),
+                ),
+            }));
         }
         let dirty = self.images.take_dirty_images();
         let cell = self.renderer.cell_metrics();

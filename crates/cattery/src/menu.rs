@@ -11,7 +11,8 @@ use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 12] = [
+const COMMANDS: [(Command, &str); 13] = [
+    (Command::Find, "find"),
     (Command::Sessions, "sessions"),
     (Command::Copy, "copy"),
     (Command::Paste, "paste"),
@@ -156,6 +157,8 @@ mod platform {
             &[
                 &item(Command::Copy, "Copy", Some((cmd, Code::KeyC))),
                 &item(Command::Paste, "Paste", Some((cmd, Code::KeyV))),
+                &PredefinedMenuItem::separator(),
+                &item(Command::Find, "Find…", Some((cmd, Code::KeyF))),
             ],
         )?;
         let view = Submenu::with_items(
@@ -232,6 +235,8 @@ mod platform {
             &[
                 &item(Command::Copy, "&Copy", Some((ctrl_shift, Code::KeyC))),
                 &item(Command::Paste, "&Paste", Some((ctrl_shift, Code::KeyV))),
+                &PredefinedMenuItem::separator(),
+                &item(Command::Find, "&Find…", Some((ctrl_shift, Code::KeyF))),
             ],
         )?;
         let view = Submenu::with_items(
@@ -276,6 +281,7 @@ mod tests {
             Command::NewWindow,
             Command::NewWindowHere,
             Command::CloseWindow,
+            Command::Find,
             Command::Sessions,
             Command::Copy,
             Command::Paste,

@@ -45,6 +45,12 @@ Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
+Find (Command-F on macOS, Control-Shift-F on Linux and Windows, or the Edit
+menu) searches the session's history: the query is typed into a bar at the
+bottom and sent with Return, and the matches are marked, the newest shown
+first; Return or `n` shows the next older, `N` the next newer, and Escape —
+or any other key, which then reaches the program — closes the bar.
+
 On macOS, Option types the characters it composes (Option-E types é), as it
 does in other apps; with the settings' `window.macos_option_as_alt`, it acts
 as Alt (Meta) instead. A program ringing the bell in a window out of sight

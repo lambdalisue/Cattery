@@ -238,3 +238,36 @@ async fn the_window_is_told_of_an_image_a_program_draws() {
     }
     panic!("no image was told of");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn the_session_s_history_is_searched() {
+    let daemon = Daemon::new();
+    let (events, link) = attached(
+        &daemon,
+        &[
+            "/bin/sh",
+            "-c",
+            "printf 'alpha\\nbeta\\nalpha\\n'; sleep 10",
+        ],
+    )
+    .await;
+    let mut shadow = ShadowScreen::new(24, 80);
+    wait_for(&events, &mut shadow, "alpha");
+    // The output lands a moment after its first line.
+    std::thread::sleep(Duration::from_millis(300));
+    let stream = link.search("alpha").unwrap();
+    let mut found = 0;
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        match events.recv_timeout(Duration::from_millis(100)) {
+            Ok(Event::Found(id, _)) if id == stream => found += 1,
+            Ok(Event::SearchEnded(id, ended)) if id == stream => {
+                assert_eq!(ended, Ok(2));
+                assert_eq!(found, 2);
+                return;
+            }
+            _ => {}
+        }
+    }
+    panic!("the search never ended; {found} found");
+}
