@@ -47,22 +47,7 @@ impl Store {
         if let Some(error) = diagnostics.errors().next() {
             bail!("felis would refuse these settings: {}", error.message);
         }
-        // Replacing a link would cut it, and whatever keeps the file it
-        // points at — a package manager, a dotfiles checkout — would lose
-        // track of the settings.
-        if std::fs::symlink_metadata(&self.path).is_ok_and(|meta| meta.file_type().is_symlink()) {
-            bail!("{} is kept elsewhere; change it there", self.path.display());
-        }
-        let dir = self
-            .path
-            .parent()
-            .context("the settings file has no directory")?;
-        std::fs::create_dir_all(dir)?;
-        // Written beside the file and moved over it, so a reader never sees
-        // half of it.
-        let mut file = NamedTempFile::new_in(dir)?;
-        file.write_all(text.as_bytes())?;
-        file.persist(&self.path)?;
+        replace(&self.path, &text)?;
         self.written = Some(text);
         Ok(())
     }
@@ -73,6 +58,24 @@ impl Store {
             std::fs::read_to_string(&self.path).is_ok_and(|text| text == written)
         })
     }
+}
+
+/// Replace the file at `path` with `text`, unless it is a link to one kept
+/// elsewhere.
+pub fn replace(path: &Path, text: &str) -> anyhow::Result<()> {
+    // Replacing a link would cut it, and whatever keeps the file it points
+    // at — a package manager, a dotfiles checkout — would lose track of it.
+    if std::fs::symlink_metadata(path).is_ok_and(|meta| meta.file_type().is_symlink()) {
+        bail!("{} is kept elsewhere; change it there", path.display());
+    }
+    let dir = path.parent().context("the file has no directory")?;
+    std::fs::create_dir_all(dir)?;
+    // Written beside the file and moved over it, so a reader never sees
+    // half of it.
+    let mut file = NamedTempFile::new_in(dir)?;
+    file.write_all(text.as_bytes())?;
+    file.persist(path)?;
+    Ok(())
 }
 
 #[cfg(test)]

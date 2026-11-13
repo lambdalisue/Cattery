@@ -4,6 +4,7 @@
 //! separate so tests can drive a daemon started as the executable starts it.
 
 pub mod app;
+pub mod appearance;
 pub mod daemon;
 pub mod edit;
 pub mod grid;
@@ -17,3 +18,4 @@ pub mod settings;
 pub mod socket;
 pub mod store;
 pub mod terminal;
+pub mod themes;

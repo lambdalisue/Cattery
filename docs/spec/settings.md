@@ -21,8 +21,8 @@ Cattery's does not change felis's windows.
 
 ## Changing it
 
-Saving the file applies the change to every open window, without a restart,
-with these exceptions:
+Saving the file, or the appearance file below, applies the change to every
+open window, without a restart, with these exceptions:
 
 - The shell a session runs applies to the sessions started after the change.
 - A window is opaque or translucent from when it opens: a change of opacity
@@ -33,4 +33,31 @@ the reason is logged. At start, such a file leaves every setting at its
 default.
 
 Programs that ask the terminal for its colours are told the colours the
-settings give.
+settings and the theme give.
+
+## Themes
+
+Cattery's colours come from a theme: one for a light appearance, one for a
+dark, and the appearance that picks between them — the system's, which
+Cattery follows as it changes, or always light, or always dark. Where the
+system's appearance cannot be told, it is taken for dark.
+
+They are kept in `appearance.toml`, in the directory of the settings file:
+
+```toml
+appearance = "system"   # "system", "light" or "dark"
+light_theme = "Dawnfox"
+dark_theme = "Nightfox"
+```
+
+A key left out has the value above. A file that does not read as this
+leaves the appearance in use, and at start the one above.
+
+A theme is named by its file in Ghostty's theme format, in the `themes`
+directory beside the settings file, or by one Cattery comes with. A user's
+theme of the same name as one of Cattery's takes its place. Only the
+palette's sixteen colours, `background`, `foreground` and `cursor-color`
+are read; the rest of Ghostty's keys colour what felis has no setting for.
+A theme of no such name, or one that does not read, leaves felis's colours.
+
+A colour the settings file sets is drawn in place of the theme's.

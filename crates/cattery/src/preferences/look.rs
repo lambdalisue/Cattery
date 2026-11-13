@@ -97,25 +97,37 @@ pub fn first_installed<'a>(
     wanted.iter().copied().find(|family| installed(family))
 }
 
+/// The family of the bold faces, for titles and headings.
+const BOLD: &str = "bold";
+
+/// Text set in the platform's bold interface face.
+pub fn bold(size: f32) -> FontId {
+    FontId::new(size, FontFamily::Name(BOLD.into()))
+}
+
 /// Set `context` up to look as the window should, in either theme.
 pub fn install(context: &egui::Context) {
     context.set_fonts(fonts());
     for theme in [Theme::Light, Theme::Dark] {
         context.set_visuals_of(theme, visuals(Tokens::of(theme == Theme::Dark)));
         context.style_mut_of(theme, |style| {
+            // The sizes macOS's own settings are set in.
             style.text_styles = [
-                (TextStyle::Heading, FontId::proportional(20.0)),
-                (TextStyle::Body, FontId::proportional(14.0)),
-                (TextStyle::Button, FontId::proportional(14.0)),
-                (TextStyle::Small, FontId::proportional(12.0)),
-                (TextStyle::Monospace, FontId::monospace(13.0)),
+                (TextStyle::Heading, bold(17.0)),
+                (TextStyle::Body, FontId::proportional(13.0)),
+                (TextStyle::Button, FontId::proportional(13.0)),
+                (TextStyle::Small, FontId::proportional(11.0)),
+                (TextStyle::Monospace, FontId::monospace(12.0)),
             ]
             .into();
-            style.spacing.item_spacing = egui::vec2(8.0, 6.0);
-            style.spacing.button_padding = egui::vec2(10.0, 4.0);
-            style.spacing.interact_size.y = 26.0;
-            style.spacing.combo_width = 220.0;
-            style.spacing.slider_width = 160.0;
+            style.spacing.item_spacing = egui::vec2(8.0, 4.0);
+            style.spacing.button_padding = egui::vec2(10.0, 3.0);
+            style.spacing.interact_size = egui::vec2(36.0, 22.0);
+            style.spacing.combo_width = 200.0;
+            style.spacing.slider_width = 150.0;
+            style.spacing.slider_rail_height = 4.0;
+            style.spacing.menu_margin = egui::Margin::same(5);
+            style.visuals.handle_shape = egui::style::HandleShape::Circle;
         });
     }
 }
@@ -125,9 +137,9 @@ fn fonts() -> FontDefinitions {
     let mut db = fontdb::Database::new();
     db.load_system_fonts();
     let mut fonts = FontDefinitions::default();
-    let mut put = |name: &str, wanted: &[&str], families: &[FontFamily]| {
-        let Some(data) = first_installed(wanted, |family| query(&db, family).is_some())
-            .and_then(|family| face(&db, family))
+    let mut put = |name: &str, wanted: &[&str], weight: fontdb::Weight, families: &[FontFamily]| {
+        let Some(data) = first_installed(wanted, |family| query(&db, family, weight).is_some())
+            .and_then(|family| face(&db, family, weight))
         else {
             return;
         };
@@ -141,25 +153,48 @@ fn fonts() -> FontDefinitions {
             list.insert(at, name.to_owned());
         }
     };
-    put("system-text", TEXT, &[FontFamily::Proportional]);
-    put("system-code", CODE, &[FontFamily::Monospace]);
+    let (regular, semibold) = (fontdb::Weight::NORMAL, fontdb::Weight::SEMIBOLD);
+    put("system-text", TEXT, regular, &[FontFamily::Proportional]);
+    put("system-code", CODE, regular, &[FontFamily::Monospace]);
     put(
         "system-japanese",
         JAPANESE,
+        regular,
         &[FontFamily::Proportional, FontFamily::Monospace],
     );
+    let bold = FontFamily::Name(BOLD.into());
+    put(
+        "system-text-bold",
+        TEXT,
+        semibold,
+        std::slice::from_ref(&bold),
+    );
+    put(
+        "system-japanese-bold",
+        JAPANESE,
+        semibold,
+        std::slice::from_ref(&bold),
+    );
+    // Whatever the bold faces lack is drawn as the regular text is.
+    let regular_faces = fonts.families[&FontFamily::Proportional].clone();
+    fonts
+        .families
+        .entry(bold)
+        .or_default()
+        .extend(regular_faces);
     fonts
 }
 
-fn query(db: &fontdb::Database, family: &str) -> Option<fontdb::ID> {
+fn query(db: &fontdb::Database, family: &str, weight: fontdb::Weight) -> Option<fontdb::ID> {
     db.query(&fontdb::Query {
         families: &[fontdb::Family::Name(family)],
+        weight,
         ..fontdb::Query::default()
     })
 }
 
-fn face(db: &fontdb::Database, family: &str) -> Option<FontData> {
-    db.with_face_data(query(db, family)?, |data, index| {
+fn face(db: &fontdb::Database, family: &str, weight: fontdb::Weight) -> Option<FontData> {
+    db.with_face_data(query(db, family, weight)?, |data, index| {
         let mut face = FontData::from_owned(data.to_vec());
         face.index = index;
         face
@@ -207,6 +242,14 @@ fn visuals(tokens: Tokens) -> Visuals {
         panel_fill: tokens.window,
         error_fg_color: tokens.error,
         slider_trailing_fill: true,
+        menu_corner_radius: CornerRadius::same(8),
+        window_corner_radius: CornerRadius::same(10),
+        popup_shadow: egui::Shadow {
+            offset: [0, 4],
+            blur: 16,
+            spread: 0,
+            color: Color32::from_black_alpha(if dark { 120 } else { 40 }),
+        },
         ..base
     }
 }
