@@ -10,7 +10,7 @@ use tokio::runtime::Runtime;
 use winit::dpi::LogicalSize;
 use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
-use winit::window::{Theme, Window, WindowId};
+use winit::window::{Theme, Window, WindowButtons, WindowId};
 
 pub use self::pages::Page;
 use self::pages::{Files, ThemeChoice, View};
@@ -85,7 +85,10 @@ impl Preferences {
                 .with_title("Cattery Preferences")
                 .with_window_icon(crate::icon::window(shown.appearance.look(shown.system)))
                 .with_inner_size(LogicalSize::new(760.0, 560.0))
-                .with_min_inner_size(LogicalSize::new(600.0, 400.0)),
+                .with_min_inner_size(LogicalSize::new(600.0, 400.0))
+                // A settings window is not one to fill the screen with, as
+                // the platform's own settings windows are not.
+                .with_enabled_buttons(WindowButtons::CLOSE | WindowButtons::MINIMIZE),
         )?;
         let themes_dir = appearance::themes_dir(&path);
         let icon = icon_texture(surface.context(), shown.appearance.look(shown.system));

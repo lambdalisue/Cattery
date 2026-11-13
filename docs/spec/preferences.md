@@ -6,7 +6,8 @@ The window where Cattery's settings are changed.
 
 Command-comma on macOS, and Control-comma on Linux and Windows, in a
 session's window opens the Preferences window, or brings it to the front
-when it is open. The chord does not reach the session.
+when it is open. The chord does not reach the session. The window can be
+resized and minimized, but not maximized.
 
 ## What it changes
 
