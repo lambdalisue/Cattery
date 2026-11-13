@@ -8,6 +8,8 @@ use felis_client_core::{FKey, Modifiers, NamedKey};
 use felis_protocol::limits::MAX_KEY_TEXT_BYTES;
 use felis_protocol::messages::{InputMsg, Key, KeyEvent, KeyEventKind, KeyLocation};
 use felis_render_core::overlay::PreeditOverlay;
+
+use crate::settings::Zoom;
 use winit::event::{ElementState, Ime};
 use winit::keyboard::{
     Key as WinitKey, KeyLocation as WinitKeyLocation, ModifiersState, NamedKey as WinitNamedKey,
@@ -122,6 +124,7 @@ pub enum Command {
     CloseWindow,
     /// End every window's session and the app.
     Quit,
+    Zoom(Zoom),
 }
 
 /// The command `key` with `mods` held is the platform's chord for.
@@ -168,6 +171,25 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
     };
     // Shift turns the letter upper case.
     let typed = typed.to_lowercase();
+    // The zoom keys are spelled with Shift on some layouts and without it
+    // on others (US `+` is Shift-`=`), so both are taken.
+    let zooms = if cfg!(target_os = "macos") {
+        [
+            ModifiersState::SUPER,
+            ModifiersState::SUPER.union(ModifiersState::SHIFT),
+        ]
+    } else {
+        [ModifiersState::CONTROL.union(ModifiersState::SHIFT); 2]
+    };
+    let zoom = match typed.as_str() {
+        "=" | "+" => Some(Zoom::In),
+        "-" | "_" => Some(Zoom::Out),
+        "0" | ")" => Some(Zoom::Reset),
+        _ => None,
+    };
+    if let Some(zoom) = zoom.filter(|_| zooms.contains(&mods)) {
+        return Some(Command::Zoom(zoom));
+    }
     CHORDS
         .iter()
         .find(|(key, chord, _)| *key == typed && *chord == mods)
@@ -269,6 +291,28 @@ mod tests {
             assert_eq!(
                 super::command(&character(key), mods),
                 Some(command),
+                "{key}"
+            );
+        }
+    }
+
+    #[test]
+    fn zoom_chords_take_either_spelling_of_the_key() {
+        let mods = if cfg!(target_os = "macos") {
+            SUPER
+        } else {
+            CONTROL.union(SHIFT)
+        };
+        for (key, zoom) in [
+            ("=", Zoom::In),
+            ("+", Zoom::In),
+            ("-", Zoom::Out),
+            ("_", Zoom::Out),
+            ("0", Zoom::Reset),
+        ] {
+            assert_eq!(
+                command(&character(key), mods),
+                Some(Command::Zoom(zoom)),
                 "{key}"
             );
         }

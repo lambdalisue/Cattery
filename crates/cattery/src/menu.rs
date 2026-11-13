@@ -9,8 +9,12 @@ use winit::window::Window;
 
 use crate::app::Event;
 use crate::keys::Command;
+use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 6] = [
+const COMMANDS: [(Command, &str); 9] = [
+    (Command::Zoom(Zoom::In), "zoom-in"),
+    (Command::Zoom(Zoom::Out), "zoom-out"),
+    (Command::Zoom(Zoom::Reset), "zoom-reset"),
     (Command::About, "about"),
     (Command::Preferences, "preferences"),
     (Command::NewWindow, "new-window"),
@@ -89,6 +93,7 @@ mod platform {
 
     use super::id;
     use crate::keys::Command;
+    use crate::settings::Zoom;
 
     fn item(command: Command, label: &str, chord: Option<(Modifiers, Code)>) -> MenuItem {
         let chord = chord.map(|(mods, code)| Accelerator::new(mods, code));
@@ -137,6 +142,23 @@ mod platform {
                 ),
             ],
         )?;
+        let view = Submenu::with_items(
+            "View",
+            true,
+            &[
+                &item(Command::Zoom(Zoom::In), "Bigger", Some((cmd, Code::Equal))),
+                &item(
+                    Command::Zoom(Zoom::Out),
+                    "Smaller",
+                    Some((cmd, Code::Minus)),
+                ),
+                &item(
+                    Command::Zoom(Zoom::Reset),
+                    "Default Size",
+                    Some((cmd, Code::Digit0)),
+                ),
+            ],
+        )?;
         let window = Submenu::with_items(
             "Window",
             true,
@@ -148,7 +170,7 @@ mod platform {
             ],
         )?;
         window.set_as_windows_menu_for_nsapp();
-        Menu::with_items(&[&app, &shell, &window])
+        Menu::with_items(&[&app, &shell, &view, &window])
     }
 
     #[cfg(target_os = "windows")]
@@ -183,12 +205,33 @@ mod platform {
                 &item(Command::Quit, "E&xit", None),
             ],
         )?;
+        let view = Submenu::with_items(
+            "&View",
+            true,
+            &[
+                &item(
+                    Command::Zoom(Zoom::In),
+                    "&Bigger",
+                    Some((ctrl_shift, Code::Equal)),
+                ),
+                &item(
+                    Command::Zoom(Zoom::Out),
+                    "&Smaller",
+                    Some((ctrl_shift, Code::Minus)),
+                ),
+                &item(
+                    Command::Zoom(Zoom::Reset),
+                    "&Default Size",
+                    Some((ctrl_shift, Code::Digit0)),
+                ),
+            ],
+        )?;
         let help = Submenu::with_items(
             "&Help",
             true,
             &[&item(Command::About, "&About Cattery", None)],
         )?;
-        Menu::with_items(&[&file, &help])
+        Menu::with_items(&[&file, &view, &help])
     }
 }
 
@@ -205,6 +248,9 @@ mod tests {
             Command::NewWindowHere,
             Command::CloseWindow,
             Command::Quit,
+            Command::Zoom(Zoom::In),
+            Command::Zoom(Zoom::Out),
+            Command::Zoom(Zoom::Reset),
         ] {
             assert_eq!(super::command(id(command)), Some(command));
         }

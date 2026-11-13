@@ -156,6 +156,14 @@ impl App {
                 }
                 return;
             }
+            Command::Zoom(step) => {
+                let id = from.or(self.focused);
+                let drawn = &self.drawn;
+                if let Some(terminal) = self.terminals.iter_mut().find(|t| Some(t.id()) == id) {
+                    terminal.zoom(step, drawn);
+                }
+                return;
+            }
             // Leaving the loop closes every window, ending its session.
             Command::Quit => {
                 event_loop.exit();
@@ -329,11 +337,10 @@ impl ApplicationHandler<Event> for App {
             self.system = Some(theme);
             self.recolor();
         }
-        let settings = &self.drawn;
         let Some(terminal) = self.terminals.iter_mut().find(|t| t.id() == id) else {
             return;
         };
-        match terminal.window_event(event, settings) {
+        match terminal.window_event(event) {
             Asked::Nothing => {}
             Asked::Command(command) => self.command(event_loop, command, Some(id)),
         }

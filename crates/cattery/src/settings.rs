@@ -6,7 +6,7 @@ use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use directories::ProjectDirs;
-use felis_client_core::config::{EffectiveConfig, FontStyleConfig, LoadError};
+use felis_client_core::config::{EffectiveConfig, FontConfig, FontStyleConfig, LoadError};
 use felis_protocol::messages::SessionToDaemonMsg;
 use felis_render_core::palette::{self, ThemeConfig};
 use felis_render_wgpu::{AxisSetting, DEFAULT_FONT_SIZE_LOGICAL_PX, FaceSpec, RendererConfig};
@@ -116,6 +116,25 @@ pub fn reported_colors(look: &RendererConfig) -> SessionToDaemonMsg {
     }
 }
 
+/// A step of a window's text size.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Zoom {
+    In,
+    Out,
+    /// Back to the size the settings give.
+    Reset,
+}
+
+/// The size, in logical pixels, a window drawn at `current` is drawn at
+/// after `step`, where the settings give `configured`.
+pub fn zoomed(current: f32, step: Zoom, configured: f32) -> f32 {
+    match step {
+        Zoom::In => FontConfig::clamped_font_size(current, 1.0),
+        Zoom::Out => FontConfig::clamped_font_size(current, -1.0),
+        Zoom::Reset => configured,
+    }
+}
+
 /// What a window has to redo when its look changes.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Changes {
@@ -176,6 +195,23 @@ mod tests {
     fn settings(text: &str) -> EffectiveConfig {
         let (_dir, path) = written(text);
         load(&path).unwrap()
+    }
+
+    #[test]
+    fn zooming_in_and_out_steps_a_pixel() {
+        assert_eq!(zoomed(14.0, Zoom::In, 14.0), 15.0);
+        assert_eq!(zoomed(14.0, Zoom::Out, 14.0), 13.0);
+    }
+
+    #[test]
+    fn zooming_stays_within_the_sizes_felis_draws() {
+        assert_eq!(zoomed(72.0, Zoom::In, 14.0), 72.0);
+        assert_eq!(zoomed(4.0, Zoom::Out, 14.0), 4.0);
+    }
+
+    #[test]
+    fn resetting_returns_to_the_size_the_settings_give() {
+        assert_eq!(zoomed(20.0, Zoom::Reset, 13.0), 13.0);
     }
 
     #[test]

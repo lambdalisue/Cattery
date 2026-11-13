@@ -23,7 +23,7 @@ use winit::window::{Window, WindowId};
 
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
-use crate::settings::{self, Changes};
+use crate::settings::{self, Changes, Zoom};
 use crate::{daemon, grid, icon, inserted, session, title};
 
 /// How long the daemon is given to end a session when its window closes.
@@ -49,6 +49,9 @@ pub struct Terminal {
     /// The key an input method inserted text for, whose release the session
     /// is not sent.
     inserted_for: Option<PhysicalKey>,
+    /// The text size, in logical pixels, the window is drawn at: the
+    /// settings' until it is zoomed.
+    size: f32,
     /// The settings' `window.title_prefix`, which every title starts with.
     title_prefix: Option<String>,
     /// Whether the program in the session has ended on its own.
@@ -119,6 +122,7 @@ impl Terminal {
             focused: true,
             inserted_for: None,
             title_prefix: settings.window.title_prefix.clone(),
+            size: settings::font_size(settings),
             ended: false,
         };
         terminal.retitle();
@@ -149,13 +153,13 @@ impl Terminal {
         self.shadow.cwd()
     }
 
-    pub fn window_event(&mut self, event: WindowEvent, settings: &EffectiveConfig) -> Asked {
+    pub fn window_event(&mut self, event: WindowEvent) -> Asked {
         match event {
             WindowEvent::CloseRequested => return Asked::Command(Command::CloseWindow),
             WindowEvent::Resized(size) => self.fit(size),
             WindowEvent::ScaleFactorChanged { .. } => {
                 self.renderer
-                    .reload_font_size(physical(&self.window, settings::font_size(settings)));
+                    .reload_font_size(physical(&self.window, self.size));
                 self.fit(self.window.inner_size());
             }
             WindowEvent::Focused(focused) => {
@@ -214,8 +218,12 @@ impl Terminal {
             &look,
             (settings::font_size(before), settings::font_size(after)),
         );
+        // A size set anew drops the window's zoom, as felis's window does.
+        if changes.size || changes.faces {
+            self.size = settings::font_size(after);
+        }
         self.renderer.set_theme(&Theme::from_config(&look.theme));
-        let size = physical(&self.window, settings::font_size(after));
+        let size = physical(&self.window, self.size);
         if changes.faces {
             if let Err(err) = self.renderer.reload_font(
                 look.font_family.as_deref(),
@@ -251,6 +259,19 @@ impl Terminal {
             self.show_cursor();
         }
         self.redraw();
+    }
+
+    /// Make the window's text a step bigger or smaller, or as the settings
+    /// `drawn` say again.
+    pub fn zoom(&mut self, step: Zoom, drawn: &EffectiveConfig) {
+        let size = settings::zoomed(self.size, step, settings::font_size(drawn));
+        if (size - self.size).abs() < f32::EPSILON {
+            return;
+        }
+        self.size = size;
+        self.renderer
+            .reload_font_size(physical(&self.window, self.size));
+        self.fit(self.window.inner_size());
     }
 
     /// Blink the cursor if it is time; when to look again.

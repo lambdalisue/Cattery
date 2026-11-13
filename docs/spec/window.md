@@ -41,6 +41,11 @@ Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
+A window's text grows and shrinks a pixel at a time, within the sizes
+felis draws, and returns to the size the settings give: Command with `=`,
+`-` and `0` on macOS, Control-Shift with them on Linux and Windows, or the
+View menu. The size is the window's own, until the settings' size changes.
+
 A window is called what the program in it last called it (`OSC 0` or
 `OSC 2`), and "Cattery" until it does, behind the settings'
 `window.title_prefix`.
