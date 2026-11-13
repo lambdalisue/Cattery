@@ -75,6 +75,7 @@
               fileset = lib.fileset.unions [
                 ./Cargo.toml
                 ./Cargo.lock
+                ./assets
                 ./crates
               ];
             };
@@ -120,6 +121,8 @@
               pkgs.just
               # Finds the libraries felis's font shaping links against.
               pkgs.pkg-config
+              # Renders the icon's PNGs from its SVG (scripts/icon.sh).
+              pkgs.resvg
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ]
             ++ linkedFor pkgs;

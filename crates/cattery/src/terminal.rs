@@ -24,7 +24,7 @@ use winit::window::{Window, WindowId};
 use crate::app::Event;
 use crate::keys::{self, Command, Stroke};
 use crate::settings::{self, Changes};
-use crate::{daemon, grid, inserted, session};
+use crate::{daemon, grid, icon, inserted, session};
 
 /// How long the daemon is given to end a session when its window closes.
 const ENDING: Duration = Duration::from_secs(5);
@@ -63,6 +63,7 @@ impl Terminal {
         proxy: EventLoopProxy<Event>,
         socket: &Path,
         settings: &EffectiveConfig,
+        look: winit::window::Theme,
         cwd: Option<&Path>,
     ) -> anyhow::Result<Self> {
         let (session, outgoing) = runtime.block_on(async {
@@ -74,20 +75,21 @@ impl Terminal {
             });
             anyhow::Ok((session, outgoing))
         })?;
-        let look = settings::look(settings);
+        let drawn = settings::look(settings);
         // A surface is opaque or not for good once it is made.
-        let translucent = look.theme.background_opacity.is_some();
+        let translucent = drawn.theme.background_opacity.is_some();
         let window = Arc::new(
             event_loop.create_window(
                 Window::default_attributes()
                     .with_title("Cattery")
+                    .with_window_icon(icon::window(look))
                     .with_transparent(translucent),
             )?,
         );
         let size = window.inner_size();
         let config = RendererConfig {
             font_size_physical_px: Some(physical(&window, settings::font_size(settings))),
-            ..look
+            ..drawn
         };
         let colors = settings::reported_colors(&config);
         let renderer = runtime.block_on(Renderer::new_with_config(
@@ -127,6 +129,11 @@ impl Terminal {
 
     pub fn window(&self) -> &Window {
         &self.window
+    }
+
+    /// Show the icon that goes with `look`.
+    pub fn set_icon(&self, look: winit::window::Theme) {
+        self.window.set_window_icon(icon::window(look));
     }
 
     pub fn session(&self) -> u128 {

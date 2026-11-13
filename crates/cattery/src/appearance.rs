@@ -76,18 +76,22 @@ impl Appearance {
         Ok(appearance)
     }
 
+    /// Whether Cattery looks light or dark while the system's appearance
+    /// is `system`, which some platforms cannot tell.
+    pub fn look(&self, system: Option<Theme>) -> Theme {
+        match self.mode {
+            Mode::Light => Theme::Light,
+            Mode::Dark => Theme::Dark,
+            Mode::System => system.unwrap_or(Theme::Dark),
+        }
+    }
+
     /// The name of the theme in force while the system's appearance is
-    /// `system`, which some platforms cannot tell.
+    /// `system`.
     pub fn in_force(&self, system: Option<Theme>) -> &str {
-        let light = match self.mode {
-            Mode::Light => true,
-            Mode::Dark => false,
-            Mode::System => system == Some(Theme::Light),
-        };
-        if light {
-            &self.light_theme
-        } else {
-            &self.dark_theme
+        match self.look(system) {
+            Theme::Light => &self.light_theme,
+            Theme::Dark => &self.dark_theme,
         }
     }
 
@@ -190,6 +194,19 @@ mod tests {
             ..Appearance::default()
         };
         assert_eq!(dark.in_force(Some(Theme::Light)), "Nightfox");
+    }
+
+    #[test]
+    fn a_light_theme_in_force_makes_the_look_light() {
+        let appearance = Appearance::default();
+        assert_eq!(appearance.look(Some(Theme::Light)), Theme::Light);
+        assert_eq!(appearance.look(Some(Theme::Dark)), Theme::Dark);
+        assert_eq!(appearance.look(None), Theme::Dark);
+        let light = Appearance {
+            mode: Mode::Light,
+            ..Appearance::default()
+        };
+        assert_eq!(light.look(Some(Theme::Dark)), Theme::Light);
     }
 
     #[test]

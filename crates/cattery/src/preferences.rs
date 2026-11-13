@@ -86,6 +86,7 @@ impl Preferences {
             event_loop.create_window(
                 Window::default_attributes()
                     .with_title("Cattery Preferences")
+                    .with_window_icon(crate::icon::window(shown.appearance.look(shown.system)))
                     .with_inner_size(LogicalSize::new(760.0, 560.0))
                     .with_min_inner_size(LogicalSize::new(600.0, 400.0)),
             )?,
@@ -147,6 +148,8 @@ impl Preferences {
             self.shell = edit::shell_line(&shown.settings.shell.command);
         }
         self.themes = choices(&self.themes_dir);
+        self.window
+            .set_window_icon(crate::icon::window(shown.appearance.look(shown.system)));
         self.window.request_redraw();
     }
 

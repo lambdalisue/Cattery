@@ -126,6 +126,7 @@ impl App {
             self.proxy.clone(),
             &self.socket,
             &self.drawn,
+            self.appearance.look(self.system),
             cwd,
         )?;
         if let Some(menu) = self.menu.as_ref() {
@@ -212,8 +213,11 @@ impl App {
     fn recolor(&mut self) {
         let colored = self.colored();
         let before = std::mem::replace(&mut self.drawn, colored);
+        let look = self.appearance.look(self.system);
+        crate::icon::show_in_dock(look);
         for terminal in &mut self.terminals {
             terminal.restyle(&before, &self.drawn);
+            terminal.set_icon(look);
         }
         if let Some(preferences) = self.preferences.as_mut() {
             preferences.reread(&Shown {
@@ -278,6 +282,7 @@ impl ApplicationHandler<Event> for App {
         }
         self.started = true;
         self.system = event_loop.system_theme();
+        crate::icon::show_in_dock(self.appearance.look(self.system));
         self.drawn = self.colored();
         match Menu::install(self.proxy.clone()) {
             Ok(menu) => self.menu = Some(menu),

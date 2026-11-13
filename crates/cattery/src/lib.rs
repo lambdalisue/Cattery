@@ -8,6 +8,7 @@ pub mod appearance;
 pub mod daemon;
 pub mod edit;
 pub mod grid;
+pub mod icon;
 pub mod inserted;
 pub mod keys;
 pub mod menu;

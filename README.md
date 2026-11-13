@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/cattery-icon-dark.svg">
+    <img src="assets/logo/cattery-icon-light.svg" alt="" width="128">
+  </picture>
+</p>
+
 # Cattery
 
 A GUI terminal app built on the felis terminal daemon

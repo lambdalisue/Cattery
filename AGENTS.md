@@ -41,6 +41,8 @@ macOS, Linux and Windows.
 | Path | What lives there |
 | --- | --- |
 | `crates/cattery/` | the `cattery` app binary |
+| `crates/cattery/themes/` | the themes Cattery ships, with their licences |
+| `assets/logo/` | the icon, and the PNGs `scripts/icon.sh` renders from it |
 | `docs/` | concept, ADRs, specs, references |
 | `scripts/` | helpers the release and `just ci` run |
 
@@ -72,7 +74,7 @@ Scoped Commits:
 
 | Scope | Covers |
 | --- | --- |
-| `cattery` | `crates/cattery/` |
+| `cattery` | `crates/cattery/`, `assets/` |
 | `docs` | `README.md`, `AGENTS.md`, `docs/concept.md`, `docs/references/` |
 | `adr` | `docs/adr/` |
 | `spec` | `docs/spec/` |
