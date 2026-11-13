@@ -108,15 +108,66 @@ fn modifiers(mods: ModifiersState) -> Modifiers {
     out
 }
 
-/// Whether `key` with `mods` held is the platform's chord for an app's
-/// settings: Command-comma on macOS, Control-comma elsewhere.
-pub fn opens_preferences(key: &WinitKey, mods: ModifiersState) -> bool {
-    let primary = if cfg!(target_os = "macos") {
-        ModifiersState::SUPER
+/// What the app does, rather than the session.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Command {
+    Preferences,
+    /// A new window on a session in the home directory.
+    NewWindow,
+    /// A new window on a session in the directory of the window it is
+    /// opened from.
+    NewWindowHere,
+    CloseWindow,
+}
+
+/// The command `key` with `mods` held is the platform's chord for.
+///
+/// On macOS the chords hold Command, which a terminal program never sees.
+/// Elsewhere Control-letter is a terminal's own, so the window chords add
+/// Shift, as other terminals there do.
+pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
+    const CHORDS: &[(&str, ModifiersState, Command)] = if cfg!(target_os = "macos") {
+        &[
+            (",", ModifiersState::SUPER, Command::Preferences),
+            ("n", ModifiersState::SUPER, Command::NewWindow),
+            (
+                "n",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::NewWindowHere,
+            ),
+            ("w", ModifiersState::SUPER, Command::CloseWindow),
+        ]
     } else {
-        ModifiersState::CONTROL
+        &[
+            (",", ModifiersState::CONTROL, Command::Preferences),
+            (
+                "n",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::NewWindow,
+            ),
+            (
+                "n",
+                ModifiersState::CONTROL
+                    .union(ModifiersState::SHIFT)
+                    .union(ModifiersState::ALT),
+                Command::NewWindowHere,
+            ),
+            (
+                "w",
+                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
+                Command::CloseWindow,
+            ),
+        ]
     };
-    mods == primary && matches!(key, WinitKey::Character(c) if c == ",")
+    let WinitKey::Character(typed) = key else {
+        return None;
+    };
+    // Shift turns the letter upper case.
+    let typed = typed.to_lowercase();
+    CHORDS
+        .iter()
+        .find(|(key, chord, _)| *key == typed && *chord == mods)
+        .map(|(_, _, command)| *command)
 }
 
 /// The input an input method's event sends: its committed text, if any.
@@ -180,32 +231,65 @@ mod tests {
         WinitKey::Character(SmolStr::new(s))
     }
 
-    fn primary() -> ModifiersState {
-        if cfg!(target_os = "macos") {
-            ModifiersState::SUPER
-        } else {
-            ModifiersState::CONTROL
+    const SUPER: ModifiersState = ModifiersState::SUPER;
+    const CONTROL: ModifiersState = ModifiersState::CONTROL;
+    const SHIFT: ModifiersState = ModifiersState::SHIFT;
+    const ALT: ModifiersState = ModifiersState::ALT;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn the_app_s_chords_on_macos_hold_command() {
+        for (key, mods, command) in [
+            (",", SUPER, Command::Preferences),
+            ("n", SUPER, Command::NewWindow),
+            ("N", SUPER.union(SHIFT), Command::NewWindowHere),
+            ("w", SUPER, Command::CloseWindow),
+        ] {
+            assert_eq!(
+                super::command(&character(key), mods),
+                Some(command),
+                "{key}"
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn the_app_s_chords_elsewhere_hold_control_and_shift_for_windows() {
+        for (key, mods, command) in [
+            (",", CONTROL, Command::Preferences),
+            ("N", CONTROL.union(SHIFT), Command::NewWindow),
+            ("N", CONTROL.union(SHIFT).union(ALT), Command::NewWindowHere),
+            ("W", CONTROL.union(SHIFT), Command::CloseWindow),
+        ] {
+            assert_eq!(
+                super::command(&character(key), mods),
+                Some(command),
+                "{key}"
+            );
         }
     }
 
     #[test]
-    fn the_platform_s_settings_chord_opens_preferences() {
-        assert!(opens_preferences(&character(","), primary()));
+    fn a_key_typed_alone_or_with_control_alone_reaches_the_session() {
+        for key in [",", "n", "w"] {
+            assert_eq!(command(&character(key), ModifiersState::empty()), None);
+        }
+        if !cfg!(target_os = "macos") {
+            assert_eq!(command(&character("n"), CONTROL), None);
+            assert_eq!(command(&character("w"), CONTROL), None);
+        }
     }
 
     #[test]
-    fn a_comma_alone_or_with_more_held_is_typed() {
-        assert!(!opens_preferences(&character(","), ModifiersState::empty()));
-        assert!(!opens_preferences(
-            &character(","),
-            primary() | ModifiersState::SHIFT
-        ));
-        assert!(!opens_preferences(&character(","), ModifiersState::ALT));
-    }
-
-    #[test]
-    fn the_chord_on_another_key_is_typed() {
-        assert!(!opens_preferences(&character("."), primary()));
+    fn other_keys_with_the_chord_s_modifiers_reach_the_session() {
+        let mods = if cfg!(target_os = "macos") {
+            SUPER
+        } else {
+            CONTROL
+        };
+        assert_eq!(command(&character("."), mods), None);
+        assert_eq!(command(&character(","), mods.union(ALT)), None);
     }
 
     #[test]

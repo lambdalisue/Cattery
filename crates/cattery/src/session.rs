@@ -4,6 +4,8 @@
 
 use std::path::Path;
 
+use anyhow::Context as _;
+
 use felis_client_core::config::ShellConfig;
 use felis_client_core::{Carrier, Connection, OutgoingFrame, launch_args};
 use felis_protocol::MessageKind;
@@ -23,15 +25,24 @@ pub enum Event {
 }
 
 /// Create a session running `shell`, or the user's login shell when it
-/// names no command, and attach `conn` to it.
+/// names no command, in `cwd`, and attach `conn` to it.
+///
+/// Without `cwd`, the session starts where Cattery was started from. Its
+/// environment is Cattery's either way, as a terminal opened from where
+/// Cattery was would have it.
 pub async fn create(
     conn: &mut Connection,
     shell: &ShellConfig,
+    cwd: Option<&Path>,
     socket: &Path,
 ) -> anyhow::Result<SessionInfo> {
-    // The working directory and environment are the launcher's, as a
-    // terminal opened from it would have them.
-    let args = launch_args(Vec::new(), shell, &Carrier::Local(Endpoint::from(socket)))?;
+    let mut args = launch_args(Vec::new(), shell, &Carrier::Local(Endpoint::from(socket)))?;
+    if let Some(cwd) = cwd {
+        args.cwd = cwd
+            .to_str()
+            .context("the directory to open in is not UTF-8")?
+            .to_owned();
+    }
     Ok(conn.create_with(args).await?)
 }
 

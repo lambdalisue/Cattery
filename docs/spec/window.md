@@ -1,6 +1,6 @@
 # Window
 
-What a cattery window is and what happens to the session it shows.
+What a Cattery window is and what happens to the session it shows.
 
 ## Opening
 
@@ -13,6 +13,18 @@ when none is running, and it keeps running after the window closes. It is
 apart from any felis daemon the user runs: a felis client does not see
 Cattery's sessions, and Cattery does not see theirs.
 
+Every window shows a session of its own. More windows open from the one in
+front:
+
+- **New Window** opens a window whose session starts in the home directory.
+- **New Window Here** opens a window whose session starts in the directory
+  the shell in the window in front last reported (`OSC 7`); without a
+  report, it starts in the home directory.
+
+On macOS, Command-N and Command-Shift-N open them. On Linux and Windows,
+where Control-letter belongs to the terminal, Control-Shift-N and
+Control-Alt-Shift-N do.
+
 ## While it is open
 
 The window shows the session's screen as felis draws it, and every key
@@ -24,4 +36,5 @@ Resizing the window resizes the session to the cells that fit.
 ## Closing
 
 A window closes when the program in its session ends, and closing the
-window ends the session.
+window ends the session. Command-W on macOS, and Control-Shift-W on Linux
+and Windows, close the window in front. Cattery ends with its last window.

@@ -58,11 +58,19 @@ async fn attached(
     daemon: &Daemon,
     command: &[&str],
 ) -> (mpsc::Receiver<Event>, UnboundedSender<OutgoingFrame>) {
+    attached_in(daemon, None, command).await
+}
+
+async fn attached_in(
+    daemon: &Daemon,
+    cwd: Option<&Path>,
+    command: &[&str],
+) -> (mpsc::Receiver<Event>, UnboundedSender<OutgoingFrame>) {
     let mut conn = daemon.connect().await;
     let shell = ShellConfig {
         command: command.iter().map(|s| (*s).to_owned()).collect(),
     };
-    session::create(&mut conn, &shell, &daemon.socket)
+    session::create(&mut conn, &shell, cwd, &daemon.socket)
         .await
         .unwrap();
     let (tx, rx) = mpsc::channel();
@@ -120,4 +128,24 @@ async fn the_window_is_told_when_the_program_ends() {
         }
     }
     panic!("no exit was reported");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_session_starts_in_the_directory_it_is_opened_in() {
+    let daemon = Daemon::new();
+    let place = tempfile::tempdir().unwrap();
+    let place = place.path().canonicalize().unwrap();
+    let (events, _outgoing) =
+        attached_in(&daemon, Some(&place), &["/bin/sh", "-c", "pwd; sleep 10"]).await;
+    let mut shadow = ShadowScreen::new(24, 80);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while Instant::now() < deadline {
+        if let Ok(Event::Grid(msg)) = events.recv_timeout(Duration::from_millis(100)) {
+            shadow.apply(&msg).unwrap();
+            if top_row(&shadow) == place.display().to_string() {
+                return;
+            }
+        }
+    }
+    panic!("the session started elsewhere: {:?}", top_row(&shadow));
 }
