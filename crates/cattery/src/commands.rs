@@ -22,6 +22,7 @@ pub const LISTED: &[Command] = &[
     Command::CloseAllWindows,
     Command::Preferences,
     Command::Reload,
+    Command::RestartDaemon,
     Command::About,
     Command::Help,
     Command::ReportIssue,
@@ -38,6 +39,7 @@ pub const fn label(command: Command) -> &'static str {
         Command::CloseWindow => "Close Window",
         Command::CloseAllWindows => "Close All Windows",
         Command::Reload => "Reload Configuration",
+        Command::RestartDaemon => "Restart Daemon…",
         Command::Help => "Cattery Help",
         Command::ReportIssue => "Report an Issue…",
         Command::Palette => "Command Palette…",
@@ -74,7 +76,9 @@ pub const fn chord(command: Command) -> Option<&'static str> {
             Command::Zoom(Zoom::Reset) => "⌘0",
             Command::Prompt(PromptJump::Previous) => "⌘↑",
             Command::Prompt(PromptJump::Next) => "⌘↓",
-            Command::About | Command::Help | Command::ReportIssue => return None,
+            Command::About | Command::Help | Command::ReportIssue | Command::RestartDaemon => {
+                return None;
+            }
         })
     } else {
         Some(match command {
@@ -96,6 +100,7 @@ pub const fn chord(command: Command) -> Option<&'static str> {
             | Command::ReportIssue
             | Command::Quit
             | Command::Reload
+            | Command::RestartDaemon
             | Command::CloseAllWindows => return None,
         })
     }

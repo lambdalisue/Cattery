@@ -31,6 +31,7 @@ fontdb = "0.24.0"
 nucleo-matcher = "0.3.1"
 muda = "0.21.2"
 png = "0.18.1"
+rfd = "0.18.0"
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
 objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange", "NSData", "NSBundle", "NSError"] }

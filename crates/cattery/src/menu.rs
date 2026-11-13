@@ -13,7 +13,8 @@ use crate::app::Event;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
-const COMMANDS: [(Command, &str); 19] = [
+const COMMANDS: [(Command, &str); 20] = [
+    (Command::RestartDaemon, "restart-daemon"),
     (Command::CloseAllWindows, "close-all-windows"),
     (Command::Reload, "reload"),
     (Command::Help, "help"),
@@ -143,6 +144,7 @@ mod platform {
                     "Reload Configuration",
                     Some((cmd | Modifiers::SHIFT, Code::Comma)),
                 ),
+                &item(Command::RestartDaemon, "Restart Daemon…", None),
                 &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::services(None),
                 &PredefinedMenuItem::separator(),
@@ -270,6 +272,7 @@ mod platform {
                     Some((Modifiers::CONTROL, Code::Comma)),
                 ),
                 &item(Command::Reload, "&Reload Configuration", None),
+                &item(Command::RestartDaemon, "Restart &Daemon…", None),
                 &PredefinedMenuItem::separator(),
                 &item(
                     Command::CloseWindow,
@@ -361,6 +364,7 @@ mod tests {
             Command::Prompt(PromptJump::Next),
             Command::CloseAllWindows,
             Command::Reload,
+            Command::RestartDaemon,
             Command::Help,
             Command::ReportIssue,
         ] {

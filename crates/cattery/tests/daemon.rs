@@ -302,3 +302,12 @@ async fn a_notification_a_program_posts_is_relayed() {
         ("Build", "done")
     );
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn a_stopped_daemon_takes_its_sessions_and_a_new_one_starts_empty() {
+    let daemon = Daemon::new();
+    let (_events, _link) = attached(&daemon, &["/bin/sh", "-c", "sleep 30"]).await;
+    session::stop_daemon(&daemon.socket).await.unwrap();
+    drop(daemon.connect().await);
+    assert!(session::list(&daemon.socket).await.unwrap().is_empty());
+}

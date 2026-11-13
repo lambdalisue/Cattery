@@ -37,6 +37,11 @@ reads the settings again (Reload Configuration, for an edit the watch on
 the files missed), and opens Cattery's documentation and its issue tracker
 from Help. On macOS the Window menu lists the open windows.
 
+Restart Daemon… stops Cattery's daemon, once the user confirms, and starts
+it anew from the running Cattery: every session ends, with the programs in
+it, every window closes, and a window opens on a new session in the home
+directory.
+
 ## While it is open
 
 The window shows the session's screen as felis draws it, and every key

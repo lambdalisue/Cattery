@@ -14,8 +14,8 @@ use felis_protocol::MessageKind;
 use felis_protocol::codec::WireCodec;
 use felis_protocol::messages::{
     ConnToClientMsg, ConnToDaemonMsg, Correlation, GridMsg, ImageMsg, PushMsg, SearchOptions,
-    SearchSource, SearchToClientMsg, SearchToDaemonMsg, SessionInfo, SessionToDaemonMsg, StreamId,
-    Subject,
+    SearchSource, SearchToClientMsg, SearchToDaemonMsg, SessionInfo, SessionToDaemonMsg, StopMode,
+    StreamId, Subject,
 };
 use felis_transport::{ClientDriver, Delivery, Endpoint, Incoming, OwnedFrame};
 use tokio::sync::mpsc::{self, UnboundedSender};
@@ -92,6 +92,26 @@ pub async fn list(socket: &Path) -> anyhow::Result<Vec<SessionInfo>> {
 pub async fn end(socket: &Path, id: u128) -> anyhow::Result<()> {
     let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
     ops.destroy_session(format!("{id:032x}")).await?;
+    Ok(())
+}
+
+/// Stop the daemon at `socket`, ending every session it keeps and the
+/// programs in them, and wait until it no longer answers.
+pub async fn stop_daemon(socket: &Path) -> anyhow::Result<()> {
+    let mut ops = felis_client_core::connect(socket, Offer::ops()).await?;
+    ops.daemon_stop(StopMode::Force).await?;
+    drop(ops);
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(10);
+    while felis_client_core::connect(socket, Offer::ops())
+        .await
+        .is_ok()
+    {
+        anyhow::ensure!(
+            tokio::time::Instant::now() < deadline,
+            "the daemon still answers after it was stopped"
+        );
+        tokio::time::sleep(Duration::from_millis(50)).await;
+    }
     Ok(())
 }
 

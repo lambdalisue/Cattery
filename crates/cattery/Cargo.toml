@@ -25,6 +25,7 @@ felis-render-core.workspace = true
 felis-render-wgpu.workspace = true
 felis-transport.workspace = true
 png.workspace = true
+rfd.workspace = true
 shell-words.workspace = true
 tempfile.workspace = true
 tokio.workspace = true

@@ -126,6 +126,8 @@ pub enum Command {
     CloseAllWindows,
     /// Read the settings and appearance files again.
     Reload,
+    /// End every session with Cattery's daemon, and start it anew.
+    RestartDaemon,
     /// Cattery's documentation.
     Help,
     /// Where problems with Cattery are reported.

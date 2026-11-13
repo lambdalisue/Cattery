@@ -174,6 +174,12 @@ impl App {
                 }
                 return;
             }
+            Command::RestartDaemon => {
+                if confirm_restart() {
+                    self.restart_daemon(event_loop);
+                }
+                return;
+            }
             Command::Reload => {
                 self.reload();
                 return;
@@ -342,6 +348,22 @@ impl App {
         }
     }
 
+    /// End every session with the daemon, and open a window on a new one,
+    /// which this Cattery starts.
+    fn restart_daemon(&mut self, event_loop: &ActiveEventLoop) {
+        // Their connections end with the daemon; there is nothing to detach.
+        self.terminals.clear();
+        self.focused = None;
+        self.palette = None;
+        if let Err(err) = self.runtime.block_on(session::stop_daemon(&self.socket)) {
+            tracing::warn!(?err, "the daemon was not stopped");
+        }
+        if let Err(err) = self.open(event_loop, Start::New(place::home().as_deref())) {
+            self.failure = Some(err);
+            event_loop.exit();
+        }
+    }
+
     /// Bring the palette up, opening it if it is not open.
     fn open_palette(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(palette) = self.palette.as_ref() {
@@ -424,6 +446,22 @@ impl App {
             Err(err) => tracing::warn!(?err, "the Preferences window did not open"),
         }
     }
+}
+
+/// Whether the user means to restart the daemon, which ends every session.
+fn confirm_restart() -> bool {
+    let answer = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Warning)
+        .set_title("Restart Cattery's daemon?")
+        .set_description(
+            "Every session ends, and the programs running in them. A new window opens on a new session.",
+        )
+        .set_buttons(rfd::MessageButtons::OkCancelCustom(
+            "Restart".to_owned(),
+            "Cancel".to_owned(),
+        ))
+        .show();
+    answer == rfd::MessageDialogResult::Custom("Restart".to_owned())
 }
 
 impl ApplicationHandler<Event> for App {
