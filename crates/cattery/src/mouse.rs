@@ -36,6 +36,12 @@ pub fn to_program(reporting: bool, mods: ModifiersState) -> bool {
     reporting && !mods.shift_key()
 }
 
+/// Whether a press of `button` opens the window's menu: a right click the
+/// program does not take.
+pub fn opens_menu(button: MouseButton, reporting: bool, mods: ModifiersState) -> bool {
+    button == MouseButton::Right && !to_program(reporting, mods)
+}
+
 /// Whether a click opens the link under it: with Command held on macOS and
 /// Control elsewhere, so a plain click still selects, and goes to programs.
 pub fn opens_links(mods: ModifiersState) -> bool {
@@ -145,6 +151,23 @@ mod tests {
     }
 
     const NONE: ModifiersState = ModifiersState::empty();
+
+    #[test]
+    fn a_right_click_opens_the_menu_while_the_program_does_not_take_it() {
+        assert!(opens_menu(MouseButton::Right, false, NONE));
+        assert!(!opens_menu(MouseButton::Right, true, NONE));
+    }
+
+    #[test]
+    fn shift_opens_the_menu_over_a_program_that_takes_the_mouse() {
+        assert!(opens_menu(MouseButton::Right, true, ModifiersState::SHIFT));
+    }
+
+    #[test]
+    fn other_buttons_open_no_menu() {
+        assert!(!opens_menu(MouseButton::Left, false, NONE));
+        assert!(!opens_menu(MouseButton::Middle, false, NONE));
+    }
 
     #[test]
     fn the_three_buttons_and_the_side_ones_are_told() {

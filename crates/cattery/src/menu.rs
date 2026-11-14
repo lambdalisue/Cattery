@@ -52,10 +52,34 @@ pub fn command(id: &str) -> Option<Command> {
         .map(|(command, _)| *command)
 }
 
+/// An entry of a menu drawn alike on every platform.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Entry {
+    Item(Command, &'static str),
+    Separator,
+}
+
+/// What right-clicking a window offers.
+pub const WINDOW_MENU: &[Entry] = &[
+    Entry::Item(Command::Copy, "Copy"),
+    Entry::Item(Command::Paste, "Paste"),
+    Entry::Separator,
+    Entry::Item(Command::Find, "Find…"),
+    Entry::Item(Command::Palette, "Command Palette…"),
+    Entry::Separator,
+    Entry::Item(Command::NewWindow, "New Window"),
+    Entry::Item(Command::NewWindowHere, "New Window Here"),
+    Entry::Separator,
+    Entry::Item(Command::Preferences, "Preferences…"),
+];
+
 /// The app's menu, while it is shown.
 pub struct Menu {
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     _menu: muda::Menu,
+    /// What right-clicking a window offers, as the platform draws a menu.
+    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    window_menu: muda::Menu,
 }
 
 impl Menu {
@@ -81,7 +105,10 @@ impl Menu {
             };
             #[cfg(target_os = "windows")]
             let menu = platform::build()?;
-            Ok(Self { _menu: menu })
+            Ok(Self {
+                _menu: menu,
+                window_menu: platform::entries(WINDOW_MENU)?,
+            })
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
@@ -107,6 +134,36 @@ impl Menu {
         #[cfg(not(target_os = "windows"))]
         let _ = window;
     }
+
+    /// Show what right-clicking `window` offers, at the pointer, until an
+    /// item is chosen or the menu is dismissed.
+    pub fn pop_up(&self, window: &Window) {
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            use muda::ContextMenu as _;
+            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            let Ok(handle) = window.window_handle() else {
+                return;
+            };
+            match handle.as_raw() {
+                // SAFETY: the view is winit's, alive while `window` is.
+                #[cfg(target_os = "macos")]
+                RawWindowHandle::AppKit(handle) => unsafe {
+                    self.window_menu
+                        .show_context_menu_for_nsview(handle.ns_view.as_ptr(), None);
+                },
+                // SAFETY: the window is winit's, alive while `window` is.
+                #[cfg(target_os = "windows")]
+                RawWindowHandle::Win32(handle) => unsafe {
+                    self.window_menu
+                        .show_context_menu_for_hwnd(handle.hwnd.get(), None);
+                },
+                _ => {}
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        let _ = window;
+    }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -114,7 +171,7 @@ mod platform {
     use muda::accelerator::{Accelerator, Code, Modifiers};
     use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
-    use super::id;
+    use super::{Entry, id};
     use felis_protocol::messages::PromptJump;
 
     use crate::keys::Command;
@@ -123,6 +180,18 @@ mod platform {
     fn item(command: Command, label: &str, chord: Option<(Modifiers, Code)>) -> MenuItem {
         let chord = chord.map(|(mods, code)| Accelerator::new(mods, code));
         MenuItem::with_id(id(command), label, true, chord)
+    }
+
+    /// A menu of `entries`, as the platform draws one.
+    pub fn entries(entries: &[Entry]) -> muda::Result<Menu> {
+        let menu = Menu::new();
+        for entry in entries {
+            match *entry {
+                Entry::Item(command, label) => menu.append(&item(command, label, None))?,
+                Entry::Separator => menu.append(&PredefinedMenuItem::separator())?,
+            }
+        }
+        Ok(menu)
     }
 
     #[cfg(target_os = "macos")]
@@ -370,6 +439,21 @@ mod tests {
         ] {
             assert_eq!(super::command(id(command)), Some(command));
         }
+    }
+
+    #[test]
+    fn every_item_of_the_window_s_menu_tells_its_command() {
+        for entry in WINDOW_MENU {
+            if let Entry::Item(command, label) = entry {
+                assert_eq!(super::command(id(*command)), Some(*command), "{label}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_window_s_menu_neither_starts_nor_ends_with_a_separator() {
+        assert_ne!(WINDOW_MENU.first(), Some(&Entry::Separator));
+        assert_ne!(WINDOW_MENU.last(), Some(&Entry::Separator));
     }
 
     #[test]

@@ -18,6 +18,8 @@ use crate::clipboard;
 use crate::keys::Command;
 use crate::menu::Menu;
 use crate::palette::{Asked as PaletteAsked, Palette};
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+use crate::popup::{Asked as PopupAsked, Popup};
 use crate::preferences::{Outcome, Page, Preferences, Shown};
 use crate::terminal::{Asked, Start, Terminal};
 use crate::{notify, place, roster, session, settings, themes};
@@ -76,6 +78,8 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         focused: None,
         menu: None,
         palette: None,
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        popup: None,
         listed_at: None,
         preferences: None,
         started: false,
@@ -120,6 +124,9 @@ struct App {
     focused: Option<WindowId>,
     menu: Option<Menu>,
     palette: Option<Palette>,
+    /// A window's menu, while it is open, and the window it is of.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    popup: Option<(Popup, WindowId)>,
     /// When the palette last listed the sessions.
     listed_at: Option<Instant>,
     preferences: Option<Preferences>,
@@ -369,6 +376,28 @@ impl App {
         }
     }
 
+    /// Show the menu of the window `id` at the pointer.
+    fn pop_up(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+        let Some(terminal) = self.terminals.iter().find(|t| t.id() == id) else {
+            return;
+        };
+        #[cfg(any(target_os = "macos", target_os = "windows"))]
+        {
+            let _ = event_loop;
+            if let Some(menu) = self.menu.as_ref() {
+                menu.pop_up(terminal.window());
+            }
+        }
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        {
+            let at = terminal.pointer_on_screen();
+            match Popup::open(event_loop, &self.runtime, crate::menu::WINDOW_MENU, at) {
+                Ok(popup) => self.popup = Some((popup, id)),
+                Err(err) => tracing::warn!(?err, "the window's menu did not open"),
+            }
+        }
+    }
+
     /// Bring the palette up, opening it if it is not open.
     fn open_palette(&mut self, event_loop: &ActiveEventLoop) {
         if let Some(palette) = self.palette.as_ref() {
@@ -503,6 +532,19 @@ impl ApplicationHandler<Event> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, id: WindowId, event: WindowEvent) {
+        #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+        if let Some((popup, from)) = self.popup.as_mut().filter(|(popup, _)| popup.id() == id) {
+            let from = *from;
+            match popup.window_event(&event) {
+                PopupAsked::Nothing => {}
+                PopupAsked::Closed => self.popup = None,
+                PopupAsked::Run(command) => {
+                    self.popup = None;
+                    self.command(event_loop, command, Some(from));
+                }
+            }
+            return;
+        }
         if let Some(palette) = self.palette.as_mut().filter(|palette| palette.id() == id) {
             let asked = palette.window_event(&event);
             self.palette_asked(event_loop, asked);
@@ -541,6 +583,7 @@ impl ApplicationHandler<Event> for App {
         match terminal.window_event(event) {
             Asked::Nothing => {}
             Asked::Command(command) => self.command(event_loop, command, Some(id)),
+            Asked::Menu => self.pop_up(event_loop, id),
         }
     }
 

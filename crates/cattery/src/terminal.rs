@@ -53,6 +53,8 @@ pub enum Start<'a> {
 pub enum Asked {
     Nothing,
     Command(Command),
+    /// The window's menu, at the pointer.
+    Menu,
 }
 
 pub struct Terminal {
@@ -222,6 +224,17 @@ impl Terminal {
         &self.window
     }
 
+    /// Where the pointer is on the screen, where the platform tells where
+    /// the window is; Wayland does not.
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    pub fn pointer_on_screen(&self) -> Option<PhysicalPosition<i32>> {
+        let pointer = self.pointer?;
+        let window = self.window.inner_position().ok()?;
+        #[expect(clippy::cast_possible_truncation, reason = "a pixel on a screen")]
+        let (x, y) = (pointer.x.round() as i32, pointer.y.round() as i32);
+        Some(PhysicalPosition::new(window.x + x, window.y + y))
+    }
+
     /// Show the icon that goes with `look`.
     pub fn set_icon(&self, look: winit::window::Theme) {
         self.window.set_window_icon(icon::window(look));
@@ -273,7 +286,7 @@ impl Terminal {
             WindowEvent::Ime(ime) => self.compose(&ime),
             WindowEvent::CursorMoved { position, .. } => self.point(position),
             WindowEvent::CursorLeft { .. } => self.pointer = None,
-            WindowEvent::MouseInput { state, button, .. } => self.press(state, button),
+            WindowEvent::MouseInput { state, button, .. } => return self.press(state, button),
             WindowEvent::MouseWheel { delta, .. } => self.turn_wheel(delta, self.lines),
             WindowEvent::DroppedFile(path) => self.paste(&select::dropped(&path)),
             WindowEvent::RedrawRequested => self.draw(),
@@ -734,16 +747,20 @@ impl Terminal {
         }));
     }
 
-    fn press(&mut self, state: ElementState, button: winit::event::MouseButton) {
+    fn press(&mut self, state: ElementState, button: winit::event::MouseButton) -> Asked {
         let Some(button) = mouse::button(button) else {
-            return;
+            return Asked::Nothing;
         };
+        let reporting = self.shadow.mouse_protocol_active();
         match state {
             ElementState::Pressed => {
                 if button == MouseButton::Left && self.open_link() {
-                    return;
+                    return Asked::Nothing;
                 }
-                if mouse::to_program(self.shadow.mouse_protocol_active(), self.modifiers) {
+                if mouse::opens_menu(button, reporting, self.modifiers) {
+                    return Asked::Menu;
+                }
+                if mouse::to_program(reporting, self.modifiers) {
                     // What the program does with the click is its own;
                     // a selection left showing would be of other text.
                     self.select(None);
@@ -764,6 +781,7 @@ impl Terminal {
                 }
             }
         }
+        Asked::Nothing
     }
 
     /// Select from the cell under the pointer: from there for one click, the

@@ -24,6 +24,8 @@ pub mod mouse;
 pub mod notify;
 pub mod palette;
 pub mod place;
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+pub mod popup;
 pub mod preferences;
 pub mod roster;
 pub mod search;
