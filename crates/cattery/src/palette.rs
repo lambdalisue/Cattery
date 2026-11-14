@@ -4,10 +4,10 @@
 
 use std::time::SystemTime;
 
-use egui::text::{LayoutJob, TextFormat};
+use egui::text::{LayoutJob, TextFormat, TextWrapping};
 use egui::{
-    Align, Align2, CentralPanel, Color32, CornerRadius, FontId, Frame, Key, Layout, Margin,
-    RichText, ScrollArea, Sense, Stroke, TextEdit, Ui, pos2, vec2,
+    Align, CentralPanel, Color32, CornerRadius, FontId, Frame, Key, Layout, Margin, RichText,
+    ScrollArea, Sense, Stroke, TextEdit, Ui, pos2, vec2,
 };
 use tokio::runtime::Runtime;
 use winit::dpi::{LogicalSize, PhysicalPosition, PhysicalSize};
@@ -552,9 +552,16 @@ fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::R
         (tokens.text, tokens.muted, tokens.accent)
     };
     let left = rect.left() + 10.0;
-    let title = ui
-        .painter()
-        .layout_job(marked_title(&entry.title, &entry.marks, text, marked));
+    let hint = entry.hint.map(|hint| {
+        ui.painter()
+            .layout_no_wrap(hint.to_owned(), FontId::proportional(12.0), muted)
+    });
+    // The text stops short of the hint, with room between them.
+    let width = rect.width() - 20.0 - hint.as_ref().map_or(0.0, |hint| hint.size().x + 12.0);
+    let title = ui.painter().layout_job(one_line(
+        marked_title(&entry.title, &entry.marks, text, marked),
+        width,
+    ));
     let top = if entry.detail.is_empty() {
         rect.center().y
     } else {
@@ -563,27 +570,39 @@ fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::R
     ui.painter()
         .galley(pos2(left, top - title.size().y / 2.0), title, text);
     if !entry.detail.is_empty() {
-        ui.painter().text(
-            pos2(left, rect.top() + 29.0),
-            Align2::LEFT_CENTER,
-            &entry.detail,
-            FontId::proportional(11.0),
+        let detail = ui.painter().layout_job(one_line(
+            LayoutJob::simple_singleline(entry.detail.clone(), FontId::proportional(11.0), muted),
+            width,
+        ));
+        ui.painter().galley(
+            pos2(left, rect.top() + 29.0 - detail.size().y / 2.0),
+            detail,
             muted,
         );
     }
-    if let Some(hint) = entry.hint {
-        ui.painter().text(
-            pos2(rect.right() - 10.0, rect.center().y),
-            Align2::RIGHT_CENTER,
-            hint,
-            FontId::proportional(12.0),
-            muted,
+    if let Some(hint) = hint {
+        let at = pos2(
+            rect.right() - 10.0 - hint.size().x,
+            rect.center().y - hint.size().y / 2.0,
         );
+        ui.painter().galley(at, hint, muted);
     }
     if chosen {
         ui.scroll_to_rect(rect, None);
     }
     response
+}
+
+/// `job` on one line no wider than `width`, what does not fit left out
+/// behind an ellipsis.
+fn one_line(mut job: LayoutJob, width: f32) -> LayoutJob {
+    job.wrap = TextWrapping {
+        max_width: width.max(0.0),
+        max_rows: 1,
+        break_anywhere: true,
+        overflow_character: Some('…'),
+    };
+    job
 }
 
 /// `title` with the characters at `marks` drawn in `marked`, bold.
@@ -608,6 +627,19 @@ mod tests {
 
     use super::*;
     use crate::settings::Zoom;
+
+    #[test]
+    fn an_entry_s_text_keeps_to_one_line_of_its_row_behind_an_ellipsis() {
+        let wrap = one_line(LayoutJob::default(), 120.0).wrap;
+        assert_eq!((wrap.max_width, wrap.max_rows), (120.0, 1));
+        assert!(wrap.break_anywhere);
+        assert_eq!(wrap.overflow_character, Some('…'));
+    }
+
+    #[test]
+    fn a_row_too_narrow_for_any_text_takes_none() {
+        assert_eq!(one_line(LayoutJob::default(), -5.0).wrap.max_width, 0.0);
+    }
 
     fn row(id: u128, title: &str) -> Row {
         Row {
