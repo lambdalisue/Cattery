@@ -42,6 +42,11 @@ pub enum Event {
     Opened,
 }
 
+/// How long Cattery, started for something to open, waits for it to be
+/// handed before opening a window as a plain launch does. A Finder service
+/// hands its folder within a moment of the launch.
+const AWAIT_HANDED: Duration = Duration::from_secs(2);
+
 /// Open a window on a new session of the daemon at `socket`, drawn and
 /// started as the settings file at `settings_path` says, in `folder` or
 /// else where Cattery was, and run until quit, or elsewhere than on macOS
@@ -112,6 +117,7 @@ pub fn run(
         preferences: None,
         started: false,
         folder,
+        awaiting: None,
         failure: None,
     };
     event_loop.run_app(&mut app)?;
@@ -189,6 +195,9 @@ struct App {
     /// Where the first window opens, unless macOS hands Cattery folders to
     /// open; where Cattery was when none.
     folder: Option<PathBuf>,
+    /// Until when Cattery, started for a folder still to be handed, waits
+    /// for it before opening the first window as a plain launch does.
+    awaiting: Option<Instant>,
     failure: Option<anyhow::Error>,
 }
 
@@ -690,18 +699,21 @@ impl ApplicationHandler<Event> for App {
         }
         // Launched to open folders, Cattery opens them in place of the first
         // window rather than beside it.
-        let handed = handed_folders();
-        let folders: Vec<Option<PathBuf>> = if handed.is_empty() {
-            vec![self.folder.clone()]
-        } else {
-            handed.into_iter().map(Some).collect()
-        };
-        for folder in folders {
-            if let Err(err) = self.open(event_loop, Start::New(folder.as_deref())) {
-                self.failure = Some(err);
-                event_loop.exit();
-                return;
+        match opened::first(
+            handed_folders(),
+            opened::launched_by_default(),
+            self.folder.clone(),
+        ) {
+            opened::First::Open(folders) => {
+                for folder in folders {
+                    if let Err(err) = self.open(event_loop, Start::New(folder.as_deref())) {
+                        self.failure = Some(err);
+                        event_loop.exit();
+                        return;
+                    }
+                }
             }
+            opened::First::Await => self.awaiting = Some(Instant::now() + AWAIT_HANDED),
         }
         let (socket, proxy) = (self.socket.clone(), self.proxy.clone());
         self.runtime.spawn(async move {
@@ -804,6 +816,7 @@ impl ApplicationHandler<Event> for App {
             // Folders handed before the first window are opened in its
             // place, once the app starts.
             Event::Opened if self.started => {
+                self.awaiting = None;
                 for folder in handed_folders() {
                     if let Err(err) = self.open(event_loop, Start::New(Some(&folder))) {
                         tracing::warn!(?err, ?folder, "the folder was not opened");
@@ -826,6 +839,15 @@ impl ApplicationHandler<Event> for App {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         let now = Instant::now();
+        // Nothing came to open: Cattery was started as a plain launch would.
+        if self.awaiting.is_some_and(|until| until <= now) {
+            self.awaiting = None;
+            if self.terminals.is_empty()
+                && let Err(err) = self.open(event_loop, Start::New(self.folder.clone().as_deref()))
+            {
+                tracing::warn!(?err, "the first window did not open");
+            }
+        }
         let next = self
             .terminals
             .iter_mut()
@@ -846,6 +868,7 @@ impl ApplicationHandler<Event> for App {
                     .filter(|_| self.palette.is_some())
                     .map(|at| at + Duration::from_secs(2)),
             )
+            .chain(self.awaiting)
             .min();
         event_loop.set_control_flow(next.map_or(ControlFlow::Wait, ControlFlow::WaitUntil));
     }
