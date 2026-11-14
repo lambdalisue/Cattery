@@ -76,7 +76,7 @@ jobs:
   # built on each system the flake lists from the archive GitHub serves — the
   # source such an install fetches, and the only one with VERSION filled in.
   nix:
-    uses: lambdalisue/nix-github-release/.github/workflows/build.yml@f6fd9d6dfbc98ec1791b90c0a94cd4d78e328811 # v0.1.2
+    uses: lambdalisue/nix-github-release/.github/workflows/build.yml@5b7e3e188260ae62fa8bda9f326553358350a2ba # v0.1.3
     with:
       packages: cattery
       cachix-cache: cattery

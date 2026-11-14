@@ -22,16 +22,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1794638954,
-        "narHash": "sha256-DLpKcNwBUiH6GX9RKF2Hl53xD6mrFmBPexlGOpGEiLI=",
+        "lastModified": 1794643856,
+        "narHash": "sha256-pP5ElLE4o761LleQrzfX1ics0/xsS035Ku19vX5oDog=",
         "owner": "lambdalisue",
         "repo": "nix-github-release",
-        "rev": "f6fd9d6dfbc98ec1791b90c0a94cd4d78e328811",
+        "rev": "5b7e3e188260ae62fa8bda9f326553358350a2ba",
         "type": "github"
       },
       "original": {
         "owner": "lambdalisue",
-        "ref": "v0.1.2",
+        "ref": "v0.1.3",
         "repo": "nix-github-release",
         "type": "github"
       }
