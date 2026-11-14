@@ -34,7 +34,7 @@ fn terminfo_dir() -> Option<PathBuf> {
     if let Some(dir) = exe.as_deref().and_then(terminfo::shipped) {
         return Some(dir);
     }
-    let cache = directories::ProjectDirs::from("", "", "cattery")?;
+    let cache = crate::folders::project()?;
     let dir = terminfo::prepared(cache.cache_dir(), felis_daemon::TERMINFO_SOURCE);
     if dir.is_none() && cfg!(unix) {
         tracing::warn!("the terminfo entry was not compiled; programs may not know the terminal");

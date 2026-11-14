@@ -49,7 +49,7 @@ pub fn prepared(cache: &Path) -> Option<PathBuf> {
 pub fn dir() -> Option<PathBuf> {
     static DIR: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     DIR.get_or_init(|| {
-        let cache = directories::ProjectDirs::from("", "", "cattery")?;
+        let cache = crate::folders::project()?;
         prepared(cache.cache_dir())
     })
     .clone()

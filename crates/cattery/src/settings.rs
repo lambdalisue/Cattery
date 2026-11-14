@@ -5,7 +5,6 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
-use directories::ProjectDirs;
 use felis_client_core::config::{EffectiveConfig, FontConfig, FontStyleConfig, LoadError};
 use felis_protocol::messages::SessionToDaemonMsg;
 use felis_render_core::palette::{self, ThemeConfig};
@@ -20,18 +19,12 @@ pub const OVERRIDE_VAR: &str = "CATTERY_CONFIG";
 pub const CLIENT_ID: &str = "cattery";
 
 /// The settings file: `overridden` when it is set and not empty, otherwise
-/// `cattery/config.toml` in the platform's configuration directory. `None`
-/// when there is no home directory to find that in.
+/// `config.toml` in Cattery's folder of the platform's configuration
+/// directory. `None` when there is no home directory to find that in.
 pub fn path(overridden: Option<OsString>) -> Option<PathBuf> {
     match overridden {
         Some(path) if !path.is_empty() => Some(PathBuf::from(path)),
-        // An empty qualifier and organization, as felis passes: macOS
-        // would otherwise join them into a bundle id in the directory name.
-        _ => Some(
-            ProjectDirs::from("", "", "cattery")?
-                .config_dir()
-                .join("config.toml"),
-        ),
+        _ => Some(crate::folders::project()?.config_dir().join("config.toml")),
     }
 }
 
@@ -242,10 +235,11 @@ mod tests {
     #[test]
     fn the_file_is_cattery_s_own_not_felis_s() {
         if let Some(path) = path(None) {
-            // Windows keeps it a folder deeper, in cattery\config.
+            // Windows keeps it a folder deeper, in Cattery\config.
             assert_eq!(path.file_name(), Some("config.toml".as_ref()), "{path:?}");
             assert!(
-                path.components().any(|part| part.as_os_str() == "cattery"),
+                path.components()
+                    .any(|part| part.as_os_str().eq_ignore_ascii_case("cattery")),
                 "{path:?}"
             );
             assert!(

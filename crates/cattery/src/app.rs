@@ -41,6 +41,10 @@ pub enum Event {
 /// started as the settings file at `settings_path` says, and run until
 /// the last window closes.
 pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()> {
+    if let Some(project) = crate::folders::project() {
+        crate::folders::rename_old(project.config_dir());
+        crate::folders::rename_old(project.cache_dir());
+    }
     let settings = settings_path
         .as_deref()
         .map(load_at_start)

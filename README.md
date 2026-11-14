@@ -62,8 +62,9 @@ and Control-Alt-Shift-N.
 
 Command-comma (Control-comma on Linux and Windows) opens the Preferences
 window, where the theme, the font, the cursor and the shell are chosen.
-The settings are kept in `cattery/` under your configuration directory:
-`config.toml` in felis's format, and `appearance.toml` for the theme.
+The settings are kept in `Cattery/` under your configuration directory
+(`cattery/` on Linux): `config.toml` in felis's format, and `appearance.toml`
+for the theme, the opacity and the blur.
 
 Beyond that it does what a terminal app is expected to: select, copy and
 paste, find in history, zoom, links opened with Command-click

@@ -12,6 +12,7 @@ pub mod clipboard;
 pub mod commands;
 pub mod daemon;
 pub mod edit;
+pub mod folders;
 pub mod fuzzy;
 pub mod grid;
 pub mod icon;

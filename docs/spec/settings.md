@@ -4,9 +4,11 @@ How Cattery is told how to look and what to run.
 
 ## The file
 
-Cattery's settings are kept in `config.toml` in a `cattery` directory under
-the platform's configuration directory (`$XDG_CONFIG_HOME` or `~/.config` on
-Linux, `~/Library/Application Support` on macOS, `%APPDATA%` on Windows).
+Cattery's settings are kept in `config.toml` in a `Cattery` directory under
+the platform's configuration directory (`~/Library/Application Support` on
+macOS, `%APPDATA%` on Windows), or `cattery` under `$XDG_CONFIG_HOME` or
+`~/.config` on Linux. A `cattery` directory an earlier Cattery made on macOS
+or Windows is renamed `Cattery` when Cattery starts.
 `CATTERY_CONFIG` names another file instead. Without a file, every setting
 has felis's default.
 
