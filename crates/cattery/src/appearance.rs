@@ -4,7 +4,8 @@
 
 use std::path::{Path, PathBuf};
 
-use toml_edit::DocumentMut;
+use felis_client_core::config::EffectiveConfig;
+use toml_edit::{DocumentMut, Value};
 use winit::window::Theme;
 
 /// Which of the two themes is in force.
@@ -30,11 +31,19 @@ impl Mode {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// The largest blur radius, in points, the file sets.
+pub const MAX_BLUR: u32 = 100;
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct Appearance {
     pub mode: Mode,
     pub light_theme: String,
     pub dark_theme: String,
+    /// How much of the window's background is drawn, from `0.0` to `1.0`.
+    pub opacity: f32,
+    /// The radius, in points, of the blur of what shows through a
+    /// translucent window; `0` for none.
+    pub blur: u32,
 }
 
 impl Default for Appearance {
@@ -43,6 +52,8 @@ impl Default for Appearance {
             mode: Mode::System,
             light_theme: "Dawnfox".to_owned(),
             dark_theme: "Nightfox".to_owned(),
+            opacity: 1.0,
+            blur: 0,
         }
     }
 }
@@ -73,7 +84,26 @@ impl Appearance {
         if let Some(theme) = word("dark_theme")? {
             appearance.dark_theme = theme;
         }
+        if let Some(item) = doc.get("opacity") {
+            let opacity = item
+                .as_float()
+                .or_else(|| item.as_integer().map(|whole| whole as f64))
+                .ok_or("opacity is not a number")?;
+            #[expect(clippy::cast_possible_truncation, reason = "brought into 0..=1")]
+            let opacity = opacity.clamp(0.0, 1.0) as f32;
+            appearance.opacity = opacity;
+        }
+        if let Some(item) = doc.get("blur") {
+            let blur = item.as_integer().ok_or("blur is not a whole number")?;
+            appearance.blur = u32::try_from(blur.clamp(0, i64::from(MAX_BLUR))).unwrap_or(0);
+        }
         Ok(appearance)
+    }
+
+    /// Draw the window in `drawn` as opaque as this appearance says, in
+    /// place of what felis's settings say.
+    pub fn set_window(&self, drawn: &mut EffectiveConfig) {
+        drawn.window.opacity = self.opacity;
     }
 
     /// Whether Cattery looks light or dark while the system's appearance
@@ -99,16 +129,25 @@ impl Appearance {
     /// it holds as it is.
     pub fn written_into(&self, text: &str) -> Result<String, String> {
         let mut doc: DocumentMut = text.parse().map_err(|err| format!("{err}"))?;
+        // The shortest decimal that reads back as the same f32, so the file
+        // says 0.8 and not the f64 nearest to it.
+        let opacity = self
+            .opacity
+            .to_string()
+            .parse::<f64>()
+            .unwrap_or(f64::from(self.opacity));
         for (key, value) in [
-            ("appearance", self.mode.word()),
-            ("light_theme", self.light_theme.as_str()),
-            ("dark_theme", self.dark_theme.as_str()),
+            ("appearance", Value::from(self.mode.word())),
+            ("light_theme", Value::from(self.light_theme.as_str())),
+            ("dark_theme", Value::from(self.dark_theme.as_str())),
+            ("opacity", Value::from(opacity)),
+            ("blur", Value::from(i64::from(self.blur))),
         ] {
             match doc.get_mut(key).and_then(toml_edit::Item::as_value_mut) {
                 // The comment after a value stays with the value.
                 Some(old) => {
                     let decor = old.decor().clone();
-                    *old = value.into();
+                    *old = value;
                     *old.decor_mut() = decor;
                 }
                 None => doc[key] = toml_edit::value(value),
@@ -159,8 +198,57 @@ mod tests {
                 mode: Mode::Dark,
                 light_theme: "Dayfox".to_owned(),
                 dark_theme: "Nord".to_owned(),
+                ..Appearance::default()
             }
         );
+    }
+
+    #[test]
+    fn a_window_is_opaque_and_unblurred_by_default() {
+        let appearance = Appearance::default();
+        assert_eq!((appearance.opacity, appearance.blur), (1.0, 0));
+    }
+
+    #[test]
+    fn the_file_names_the_window_s_opacity_and_blur() {
+        let appearance = Appearance::parse("opacity = 0.8\nblur = 20\n").unwrap();
+        assert_eq!((appearance.opacity, appearance.blur), (0.8, 20));
+    }
+
+    #[test]
+    fn the_window_is_drawn_as_opaque_as_the_appearance_says_whatever_felis_s_settings_say() {
+        let (settings, _) =
+            felis_client_core::config::ConfigDocument::parse("[window]\nopacity = 0.5\n", None)
+                .unwrap()
+                .resolve(crate::settings::CLIENT_ID);
+        let mut drawn = settings;
+        Appearance::default().set_window(&mut drawn);
+        assert_eq!(drawn.window.opacity, 1.0);
+        let translucent = Appearance {
+            opacity: 0.7,
+            ..Appearance::default()
+        };
+        translucent.set_window(&mut drawn);
+        assert_eq!(drawn.window.opacity, 0.7);
+    }
+
+    #[test]
+    fn a_whole_opacity_is_a_number_too() {
+        assert_eq!(Appearance::parse("opacity = 1\n").unwrap().opacity, 1.0);
+    }
+
+    #[test]
+    fn an_opacity_or_blur_out_of_range_is_brought_into_it() {
+        let appearance = Appearance::parse("opacity = 1.5\nblur = 1000\n").unwrap();
+        assert_eq!((appearance.opacity, appearance.blur), (1.0, MAX_BLUR));
+        let appearance = Appearance::parse("opacity = -0.5\nblur = -3\n").unwrap();
+        assert_eq!((appearance.opacity, appearance.blur), (0.0, 0));
+    }
+
+    #[test]
+    fn an_opacity_or_blur_that_is_not_a_number_is_refused() {
+        assert!(Appearance::parse("opacity = \"half\"\n").is_err());
+        assert!(Appearance::parse("blur = 2.5\n").is_err());
     }
 
     #[test]
@@ -215,6 +303,8 @@ mod tests {
             mode: Mode::Light,
             light_theme: "Catppuccin Latte".to_owned(),
             dark_theme: "Nord".to_owned(),
+            opacity: 0.85,
+            blur: 12,
         };
         let text = appearance
             .written_into("# chosen in the Preferences window\nappearance = \"dark\" # was dark\n")

@@ -13,9 +13,10 @@ resized and minimized, but not maximized.
 
 - The font: its family, from the installed families felis can draw a grid
   with, and its size.
-- The theme: the appearance, the light and the dark theme, and the
-  window's opacity. Colours the settings file sets over the theme are
-  listed, and can be given back to the theme.
+- The theme: the appearance, the light and the dark theme, the window's
+  opacity, and on macOS how much what shows through a translucent window is
+  blurred. Colours the settings file sets over the theme are listed, and can
+  be given back to the theme.
 - The cursor: its colour, and whether it blinks always, never, or as the
   program asks.
 - The command a new session runs, typed as a shell line; left empty, a

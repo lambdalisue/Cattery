@@ -37,7 +37,7 @@ use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
 use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
-use crate::{clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
+use crate::{blur, clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
 
 /// Which session a window opens on.
 #[derive(Debug, Clone, Copy)]
@@ -57,6 +57,10 @@ pub enum Asked {
 
 pub struct Terminal {
     window: Arc<Window>,
+    /// Fixed when the window is made, as its surface's alpha mode is.
+    translucent: bool,
+    /// The radius the window is blurred by.
+    blurred: u32,
     renderer: Renderer,
     shadow: ShadowScreen,
     session: SessionInfo,
@@ -173,6 +177,8 @@ impl Terminal {
                 Instant::now(),
             ),
             window,
+            translucent,
+            blurred: 0,
             renderer,
             session,
             link: Some(link),
@@ -352,6 +358,16 @@ impl Terminal {
     }
 
     /// Draw with `after` where it differs from `before`.
+    /// Blur what shows through the window by `asked` points, as far as the
+    /// window is translucent.
+    pub fn blur(&mut self, asked: u32) {
+        let radius = blur::radius(asked, self.translucent);
+        if radius != self.blurred {
+            self.blurred = radius;
+            blur::apply(&self.window, radius);
+        }
+    }
+
     pub fn restyle(&mut self, before: &EffectiveConfig, after: &EffectiveConfig) {
         self.option_composes = option_composes(&self.window, after);
         self.osc_52 = after.clipboard.osc_52;

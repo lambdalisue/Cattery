@@ -130,7 +130,7 @@ struct App {
 
 impl App {
     fn open(&mut self, event_loop: &ActiveEventLoop, start: Start<'_>) -> anyhow::Result<()> {
-        let terminal = Terminal::open(
+        let mut terminal = Terminal::open(
             event_loop,
             &self.runtime,
             self.proxy.clone(),
@@ -139,6 +139,7 @@ impl App {
             self.appearance.look(self.system),
             start,
         )?;
+        terminal.blur(self.appearance.blur);
         if let Some(menu) = self.menu.as_ref() {
             menu.attach(terminal.window());
         }
@@ -308,6 +309,7 @@ impl App {
         crate::icon::show_in_dock(look);
         for terminal in &mut self.terminals {
             terminal.restyle(&before, &self.drawn);
+            terminal.blur(self.appearance.blur);
             terminal.set_icon(look);
         }
         if let Some(preferences) = self.preferences.as_mut() {
@@ -320,16 +322,19 @@ impl App {
         }
     }
 
-    /// The settings with the theme in force under them.
+    /// The settings with the theme in force under them, and the window as
+    /// the appearance says.
     fn colored(&self) -> EffectiveConfig {
         let name = self.appearance.in_force(self.system);
-        match themes::colors(name, &self.themes_dir()) {
+        let mut colored = match themes::colors(name, &self.themes_dir()) {
             Ok(colors) => colors.under(&self.settings),
             Err(err) => {
                 tracing::warn!(%err, "the theme was not read; drawing without it");
                 self.settings.clone()
             }
-        }
+        };
+        self.appearance.set_window(&mut colored);
+        colored
     }
 
     fn themes_dir(&self) -> PathBuf {

@@ -15,7 +15,7 @@ use winit::window::Theme;
 
 use super::{Change, Shown};
 use crate::about::{self, Target};
-use crate::appearance::{Appearance, Mode};
+use crate::appearance::{Appearance, MAX_BLUR, Mode};
 use crate::edit::{self, Color, Edit, Rgb};
 use crate::look::{self, Tokens};
 use crate::settings;
@@ -448,24 +448,64 @@ fn theme(content: &mut Content<'_, '_>, view: &View<'_>) {
         );
     });
 
-    let opacity = shown.settings.window.clamped_opacity();
     content.group(Some("Window"), None, |rows| {
         rows.row(
             "Opacity",
             Some("Turning a window translucent or opaque applies to new windows."),
             |ui, changes| {
-                let mut percent = (opacity * 100.0).round();
+                let mut percent = (appearance.opacity * 100.0).round();
                 if slider(ui, &mut percent, 0.0..=100.0, 1.0, "%") {
-                    changes.push(Change::Setting(Edit::Opacity(Some(percent / 100.0))));
+                    changes.push(Change::Appearance(Appearance {
+                        opacity: percent / 100.0,
+                        ..appearance.clone()
+                    }));
                 }
             },
-            (opacity < 1.0).then(|| {
+            (appearance.opacity < 1.0).then(|| {
                 (
                     "Reset to 100 %".to_owned(),
-                    vec![Change::Setting(Edit::Opacity(None))],
+                    vec![Change::Appearance(Appearance {
+                        opacity: 1.0,
+                        ..appearance.clone()
+                    })],
                 )
             }),
         );
+        // Only macOS's window server blurs by a radius; elsewhere winit can
+        // only turn the compositor's blur on or off.
+        if cfg!(target_os = "macos") {
+            rows.row(
+                "Blur",
+                Some("Blurs what shows through a translucent window."),
+                |ui, changes| {
+                    #[expect(clippy::cast_precision_loss, reason = "a radius of a few dozen")]
+                    let mut radius = appearance.blur as f32;
+                    #[expect(clippy::cast_precision_loss, reason = "a radius of a few dozen")]
+                    let most = MAX_BLUR as f32;
+                    if slider(ui, &mut radius, 0.0..=most, 1.0, "pt") {
+                        #[expect(
+                            clippy::cast_possible_truncation,
+                            clippy::cast_sign_loss,
+                            reason = "a whole radius within the slider's range"
+                        )]
+                        let blur = radius.round() as u32;
+                        changes.push(Change::Appearance(Appearance {
+                            blur,
+                            ..appearance.clone()
+                        }));
+                    }
+                },
+                (appearance.blur > 0).then(|| {
+                    (
+                        "Reset to none".to_owned(),
+                        vec![Change::Appearance(Appearance {
+                            blur: 0,
+                            ..appearance.clone()
+                        })],
+                    )
+                }),
+            );
+        }
     });
 
     let overridden = overridden(shown);

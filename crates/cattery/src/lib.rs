@@ -6,6 +6,7 @@
 pub mod about;
 pub mod app;
 pub mod appearance;
+pub mod blur;
 pub mod clipboard;
 pub mod commands;
 pub mod daemon;

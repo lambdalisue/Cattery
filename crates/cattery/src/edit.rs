@@ -26,7 +26,6 @@ pub enum Edit {
     FontFamily(Option<String>),
     FontSize(Option<f32>),
     Color(Color, Option<Rgb>),
-    Opacity(Option<f32>),
     Blink(CursorBlinkMode),
     /// The command a new session runs; empty runs the login shell.
     Shell(Vec<String>),
@@ -48,7 +47,6 @@ pub fn apply(doc: &mut DocumentMut, edit: &Edit) {
             };
             set(doc, place, rgb.map(|rgb| Value::from(hex(rgb))));
         }
-        Edit::Opacity(opacity) => set(doc, &["window", "opacity"], opacity.map(float)),
         Edit::Blink(mode) => {
             let mode = match mode {
                 CursorBlinkMode::Program => "program",
@@ -217,7 +215,7 @@ mod tests {
 
     #[test]
     fn a_section_left_empty_leaves_the_file() {
-        let after = edited("[window]\nopacity = 0.8\n", &[Edit::Opacity(None)]);
+        let after = edited("[font]\nsize_px = 12.0\n", &[Edit::FontSize(None)]);
         assert_eq!(after.trim(), "");
     }
 
@@ -241,7 +239,6 @@ mod tests {
                 Edit::Color(Color::Background, Some([0x10, 0x10, 0x10])),
                 Edit::Color(Color::Cursor, Some([0, 0xff, 0])),
                 Edit::Color(Color::Palette(9), Some([0xff, 0, 0])),
-                Edit::Opacity(Some(0.75)),
                 Edit::Blink(CursorBlinkMode::Never),
                 Edit::Shell(vec!["/bin/zsh".to_owned(), "-l".to_owned()]),
             ],
@@ -256,7 +253,6 @@ mod tests {
             settings.theme.palette.bright_red.as_deref(),
             Some("#ff0000")
         );
-        assert_eq!(settings.window.opacity, 0.75);
         assert_eq!(settings.cursor.blink, CursorBlinkMode::Never);
         assert_eq!(settings.shell.command, ["/bin/zsh", "-l"]);
     }

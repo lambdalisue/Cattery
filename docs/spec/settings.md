@@ -42,16 +42,25 @@ dark, and the appearance that picks between them — the system's, which
 Cattery follows as it changes, or always light, or always dark. Where the
 system's appearance cannot be told, it is taken for dark.
 
-They are kept in `appearance.toml`, in the directory of the settings file:
+They are kept in `appearance.toml`, in the directory of the settings file,
+with how the window shows what is behind it:
 
 ```toml
 appearance = "system"   # "system", "light" or "dark"
 light_theme = "Dawnfox"
 dark_theme = "Nightfox"
+opacity = 1.0           # how much of the background is drawn, 0.0 to 1.0
+blur = 0                # how far what shows through is blurred, in points
 ```
 
 A key left out has the value above. A file that does not read as this
-leaves the appearance in use, and at start the one above.
+leaves the appearance in use, and at start the one above. An opacity or a
+blur out of range is brought to the nearest it can be. The `window.opacity`
+of the settings file is not read.
+
+The blur is drawn on macOS, by the radius it gives, while the window is
+translucent. Elsewhere a blur above 0 asks the compositor to blur behind the
+window, where it can.
 
 A theme is named by its file in Ghostty's theme format, in the `themes`
 directory beside the settings file, or by one Cattery comes with. A user's
