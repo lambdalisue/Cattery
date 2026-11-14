@@ -82,6 +82,8 @@ pub struct Terminal {
     session: SessionInfo,
     /// Detached when the window goes.
     link: Option<Link>,
+    /// The number the window.s session.s events arrive named by.
+    link_number: u64,
     blink: BlinkClock,
     modifiers: ModifiersState,
     focused: bool,
@@ -144,19 +146,8 @@ impl Terminal {
         look: winit::window::Theme,
         start: Start<'_>,
     ) -> anyhow::Result<Self> {
-        let (session, link, minor) = runtime.block_on(async {
-            let mut conn = daemon::connect(socket, &std::env::current_exe()?).await?;
-            let session = match start {
-                Start::New(cwd) => session::create(&mut conn, &settings.shell, cwd, socket).await?,
-                Start::Attach(id) => session::attach(&mut conn, id).await?,
-            };
-            let minor = conn.effective_minor;
-            let id = session.id;
-            let link = session::pump(conn, id, move |event| {
-                proxy.send_event(Event::Session(id, event)).is_ok()
-            });
-            anyhow::Ok((session, link, minor))
-        })?;
+        let (session, link, minor, link_number) =
+            Self::connect(runtime, proxy, socket, settings, start)?;
         let drawn = settings::look(settings);
         let translucent = drawn.theme.background_opacity.is_some();
         let window = Arc::new(
@@ -202,6 +193,7 @@ impl Terminal {
             renderer,
             session,
             link: Some(link),
+            link_number,
             modifiers: ModifiersState::empty(),
             focused: true,
             minor,
@@ -232,6 +224,79 @@ impl Terminal {
         terminal.send(OutgoingFrame::ordered(&colors));
         terminal.fit(size);
         Ok(terminal)
+    }
+
+    /// Attach to a session of the daemon at `socket` as `start` says, its
+    /// events reaching `proxy` named by the number the link returned has.
+    fn connect(
+        runtime: &Runtime,
+        proxy: EventLoopProxy<Event>,
+        socket: &Path,
+        settings: &EffectiveConfig,
+        start: Start<'_>,
+    ) -> anyhow::Result<(SessionInfo, Link, u16, u64)> {
+        runtime.block_on(async {
+            let mut conn = daemon::connect(socket, &std::env::current_exe()?).await?;
+            let session = match start {
+                Start::New(cwd) => session::create(&mut conn, &settings.shell, cwd, socket).await?,
+                Start::Attach(id) => session::attach(&mut conn, id).await?,
+            };
+            let minor = conn.effective_minor;
+            let number = session::link_number();
+            let link = session::pump(conn, session.id, move |event| {
+                proxy.send_event(Event::Session(number, event)).is_ok()
+            });
+            anyhow::Ok((session, link, minor, number))
+        })
+    }
+
+    /// Show the session `id` in this window in place of its own, which is
+    /// left running.
+    pub fn switch(
+        &mut self,
+        runtime: &Runtime,
+        proxy: EventLoopProxy<Event>,
+        socket: &Path,
+        settings: &EffectiveConfig,
+        id: u128,
+    ) -> anyhow::Result<()> {
+        if id == self.session.id {
+            return Ok(());
+        }
+        let (session, link, minor, link_number) =
+            Self::connect(runtime, proxy, socket, settings, Start::Attach(id))?;
+        if let Some(old) = self.link.replace(link) {
+            runtime.block_on(old.detach());
+        }
+        self.link_number = link_number;
+        self.minor = minor;
+        self.shadow = ShadowScreen::new(session.dims.rows, session.dims.cols);
+        self.session = session;
+        self.images = ImageShadow::new();
+        self.layout = ImageLayout::new();
+        self.select(None);
+        self.anchored = None;
+        self.selecting = false;
+        self.pending = None;
+        self.renderer.set_confirm_overlay(None);
+        self.grabbed.clear();
+        self.searching = None;
+        self.search = Search::default();
+        self.renderer.set_search_overlay(None);
+        self.intent = ViewportIntent::default();
+        self.ended = false;
+        self.titled.clear();
+        let colors = settings::reported_colors(&settings::look(settings));
+        self.send(OutgoingFrame::ordered(&colors));
+        self.fit(self.window.inner_size());
+        self.retitle();
+        self.redraw();
+        Ok(())
+    }
+
+    /// The number of the link the window's session's events arrive on.
+    pub fn link_number(&self) -> u64 {
+        self.link_number
     }
 
     pub fn id(&self) -> WindowId {

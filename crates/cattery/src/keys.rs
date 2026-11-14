@@ -145,6 +145,17 @@ pub enum Command {
     Zoom(Zoom),
     /// Show the prompt before or after the one at the top of the window.
     Prompt(PromptJump),
+    /// Show the session after the window's, in the daemon's order, in the
+    /// window in its place.
+    NextSession,
+    /// Show the session before the window's in the window in its place.
+    PreviousSession,
+    /// End the window's session, which closes every window showing it.
+    EndSession,
+    /// Show this session in the window in place of its own.
+    ShowSession(u128),
+    /// End this session.
+    EndSessionOf(u128),
 }
 
 /// The command `key` with `mods` held is the platform's chord for.
@@ -163,6 +174,31 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 Command::NewWindowHere,
             ),
             ("w", ModifiersState::SUPER, Command::CloseWindow),
+            (
+                "w",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::EndSession,
+            ),
+            (
+                "]",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::NextSession,
+            ),
+            (
+                "}",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::NextSession,
+            ),
+            (
+                "[",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::PreviousSession,
+            ),
+            (
+                "{",
+                ModifiersState::SUPER.union(ModifiersState::SHIFT),
+                Command::PreviousSession,
+            ),
             ("p", ModifiersState::SUPER, Command::Palette),
             ("c", ModifiersState::SUPER, Command::Copy),
             ("f", ModifiersState::SUPER, Command::Find),
@@ -187,6 +223,13 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
                 "w",
                 ModifiersState::CONTROL.union(ModifiersState::SHIFT),
                 Command::CloseWindow,
+            ),
+            (
+                "w",
+                ModifiersState::CONTROL
+                    .union(ModifiersState::SHIFT)
+                    .union(ModifiersState::ALT),
+                Command::EndSession,
             ),
             (
                 "p",
@@ -220,6 +263,13 @@ pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
             ),
         ]
     };
+    if !cfg!(target_os = "macos") && mods == ModifiersState::CONTROL.union(ModifiersState::SHIFT) {
+        match key {
+            WinitKey::Named(WinitNamedKey::PageDown) => return Some(Command::NextSession),
+            WinitKey::Named(WinitNamedKey::PageUp) => return Some(Command::PreviousSession),
+            _ => {}
+        }
+    }
     if cfg!(target_os = "macos") && mods == ModifiersState::SUPER {
         match key {
             WinitKey::Named(WinitNamedKey::ArrowUp) => {
@@ -396,6 +446,51 @@ mod tests {
                 "{key}"
             );
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn command_shift_brackets_step_through_the_sessions_however_the_layout_spells_them() {
+        let both = SUPER.union(SHIFT);
+        for (key, command) in [
+            ("]", Command::NextSession),
+            ("}", Command::NextSession),
+            ("[", Command::PreviousSession),
+            ("{", Command::PreviousSession),
+        ] {
+            assert_eq!(
+                super::command(&character(key), both),
+                Some(command),
+                "{key}"
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn control_shift_page_keys_step_through_the_sessions() {
+        let both = CONTROL.union(SHIFT);
+        assert_eq!(
+            super::command(&WinitKey::Named(WinitNamedKey::PageDown), both),
+            Some(Command::NextSession)
+        );
+        assert_eq!(
+            super::command(&WinitKey::Named(WinitNamedKey::PageUp), both),
+            Some(Command::PreviousSession)
+        );
+    }
+
+    #[test]
+    fn the_close_chord_with_more_held_ends_the_session_too() {
+        let mods = if cfg!(target_os = "macos") {
+            SUPER.union(SHIFT)
+        } else {
+            CONTROL.union(SHIFT).union(ALT)
+        };
+        assert_eq!(
+            super::command(&character("W"), mods),
+            Some(Command::EndSession)
+        );
     }
 
     #[test]

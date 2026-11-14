@@ -142,7 +142,9 @@ A window closes when the program in its session ends. Closing a window
 leaves its session running in the daemon, out of sight, to be opened again
 from the session palette; so does quitting Cattery, for every window.
 Command-W on macOS, and Control-Shift-W on Linux and Windows, close the
-window in front. Cattery ends with its last window.
+window in front and leave its session running. Close Window and End Session
+(Command-Shift-W, Control-Alt-Shift-W) ends the session as well, which closes
+every window showing it. Cattery ends with its last window.
 
 ## Sessions
 
@@ -166,3 +168,12 @@ chosen; Command-Backspace (Control-Shift-Backspace on Linux and Windows)
 ends the session chosen, and the program in it. Escape or Control-C, or
 turning to another window, closes the palette. The list follows sessions as
 they start and end.
+
+The Sessions menu — in the menu bar on macOS, behind the title bar's menu
+button on Linux and Windows — lists the sessions too. Each is shown in the
+window in front in place of its own session, which keeps running, or ended;
+a session already shown in another window is shown in both. Next Session
+and Previous Session (Command-Shift-] and Command-Shift-[ on macOS,
+Control-Shift-PageDown and Control-Shift-PageUp on Linux and Windows) show
+the session after or before the window's own in the daemon's order, round
+past either end, and End Session ends the window's own.

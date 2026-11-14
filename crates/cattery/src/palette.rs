@@ -595,7 +595,7 @@ fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::R
 
 /// `job` on one line no wider than `width`, what does not fit left out
 /// behind an ellipsis.
-fn one_line(mut job: LayoutJob, width: f32) -> LayoutJob {
+pub fn one_line(mut job: LayoutJob, width: f32) -> LayoutJob {
     job.wrap = TextWrapping {
         max_width: width.max(0.0),
         max_rows: 1,

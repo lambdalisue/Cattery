@@ -145,6 +145,20 @@ pub fn ago(then: SystemTime, now: SystemTime) -> String {
     }
 }
 
+/// The session after `current` among `sessions`, or before it unless
+/// `forward`, going round past either end; the first where `current` is
+/// not among them, and none where no other session is.
+pub fn neighbour(sessions: &[u128], current: u128, forward: bool) -> Option<u128> {
+    let Some(at) = sessions.iter().position(|id| *id == current) else {
+        return sessions.first().copied();
+    };
+    if sessions.len() < 2 {
+        return None;
+    }
+    let step = if forward { 1 } else { sessions.len() - 1 };
+    Some(sessions[(at + step) % sessions.len()])
+}
+
 #[cfg(test)]
 mod tests {
     use std::num::NonZeroU64;
@@ -152,6 +166,30 @@ mod tests {
     use felis_protocol::messages::{Attachment, GridDims};
 
     use super::*;
+
+    #[test]
+    fn the_next_session_follows_and_wraps_around() {
+        assert_eq!(neighbour(&[1, 2, 3], 2, true), Some(3));
+        assert_eq!(neighbour(&[1, 2, 3], 3, true), Some(1));
+    }
+
+    #[test]
+    fn the_previous_session_comes_before_and_wraps_around() {
+        assert_eq!(neighbour(&[1, 2, 3], 2, false), Some(1));
+        assert_eq!(neighbour(&[1, 2, 3], 1, false), Some(3));
+    }
+
+    #[test]
+    fn a_session_alone_has_no_neighbour() {
+        assert_eq!(neighbour(&[1], 1, true), None);
+        assert_eq!(neighbour(&[], 1, true), None);
+    }
+
+    #[test]
+    fn a_session_the_list_does_not_hold_steps_to_its_first() {
+        assert_eq!(neighbour(&[1, 2], 9, true), Some(1));
+        assert_eq!(neighbour(&[1, 2], 9, false), Some(1));
+    }
 
     fn session(id: u128, sequence: u64) -> SessionInfo {
         SessionInfo {

@@ -18,6 +18,9 @@ pub const LISTED: &[Command] = &[
     Command::Zoom(Zoom::In),
     Command::Zoom(Zoom::Out),
     Command::Zoom(Zoom::Reset),
+    Command::NextSession,
+    Command::PreviousSession,
+    Command::EndSession,
     Command::CloseWindow,
     Command::CloseAllWindows,
     Command::Preferences,
@@ -52,6 +55,10 @@ pub const fn label(command: Command) -> &'static str {
         Command::Zoom(Zoom::Reset) => "Default Size",
         Command::Prompt(PromptJump::Previous) => "Previous Prompt",
         Command::Prompt(PromptJump::Next) => "Next Prompt",
+        Command::NextSession => "Next Session",
+        Command::PreviousSession => "Previous Session",
+        Command::EndSession | Command::EndSessionOf(_) => "End Session",
+        Command::ShowSession(_) => "Show Session",
     }
 }
 
@@ -76,9 +83,15 @@ pub const fn chord(command: Command) -> Option<&'static str> {
             Command::Zoom(Zoom::Reset) => "⌘0",
             Command::Prompt(PromptJump::Previous) => "⌘↑",
             Command::Prompt(PromptJump::Next) => "⌘↓",
-            Command::About | Command::Help | Command::ReportIssue | Command::RestartDaemon => {
-                return None;
-            }
+            Command::NextSession => "⇧⌘]",
+            Command::PreviousSession => "⇧⌘[",
+            Command::EndSession => "⇧⌘W",
+            Command::About
+            | Command::Help
+            | Command::ReportIssue
+            | Command::RestartDaemon
+            | Command::ShowSession(_)
+            | Command::EndSessionOf(_) => return None,
         })
     } else {
         Some(match command {
@@ -95,13 +108,18 @@ pub const fn chord(command: Command) -> Option<&'static str> {
             Command::Zoom(Zoom::Reset) => "Ctrl+Shift+0",
             Command::Prompt(PromptJump::Previous) => "Ctrl+Shift+Z",
             Command::Prompt(PromptJump::Next) => "Ctrl+Shift+X",
+            Command::NextSession => "Ctrl+Shift+PageDown",
+            Command::PreviousSession => "Ctrl+Shift+PageUp",
+            Command::EndSession => "Ctrl+Alt+Shift+W",
             Command::About
             | Command::Help
             | Command::ReportIssue
             | Command::Quit
             | Command::Reload
             | Command::RestartDaemon
-            | Command::CloseAllWindows => return None,
+            | Command::CloseAllWindows
+            | Command::ShowSession(_)
+            | Command::EndSessionOf(_) => return None,
         })
     }
 }

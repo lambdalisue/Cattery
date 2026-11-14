@@ -173,6 +173,13 @@ impl Link {
     }
 }
 
+/// A number no other link of this Cattery has had, which names the window's
+/// attachment its events are for: two windows can show one session.
+pub fn link_number() -> u64 {
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+    NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
 /// Start reading `conn`, attached to the session `id`, into `notify`, and
 /// writing what is sent on the returned link. Reading stops when `notify`
 /// returns false; writing stops once the link is detached or dropped and

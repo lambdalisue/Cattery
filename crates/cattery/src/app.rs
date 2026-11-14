@@ -16,7 +16,7 @@ use crate::about;
 use crate::appearance::{self, Appearance};
 use crate::clipboard;
 use crate::keys::Command;
-use crate::menu::{Menu, Which};
+use crate::menu::{Listed, Menu, Which};
 use crate::palette::{Asked as PaletteAsked, Palette};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::popup::{Asked as PopupAsked, Popup};
@@ -27,8 +27,8 @@ use crate::{notify, place, roster, session, settings, themes};
 /// What reaches the app from outside winit.
 #[derive(Debug)]
 pub enum Event {
-    /// What the daemon sent about the session with this id.
-    Session(u128, session::Event),
+    /// What arrives on the link of the number, for the window attached by it.
+    Session(u64, session::Event),
     /// The settings file or the appearance file was written.
     SettingsChanged,
     /// A command chosen from the menu.
@@ -80,6 +80,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         focused: None,
         menu: None,
         palette: None,
+        sessions: Vec::new(),
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         popup: None,
         listed_at: None,
@@ -126,6 +127,8 @@ struct App {
     focused: Option<WindowId>,
     menu: Option<Menu>,
     palette: Option<Palette>,
+    /// The sessions the daemon kept when they were last listed.
+    sessions: Vec<Listed>,
     /// A window's menu, while it is open, and the window it is of.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     popup: Option<(Popup, WindowId)>,
@@ -240,6 +243,24 @@ impl App {
                 }
                 return;
             }
+            Command::NextSession | Command::PreviousSession => {
+                self.step_session(from, command == Command::NextSession);
+                return;
+            }
+            Command::ShowSession(session) => {
+                self.show_session(from, session);
+                return;
+            }
+            Command::EndSession => {
+                if let Some(session) = self.terminal_mut(from).map(|t| t.session()) {
+                    self.end_session(session);
+                }
+                return;
+            }
+            Command::EndSessionOf(session) => {
+                self.end_session(session);
+                return;
+            }
             // Leaving the loop closes every window, ending its session.
             Command::Quit => {
                 event_loop.exit();
@@ -258,6 +279,48 @@ impl App {
         if let Err(err) = opened {
             tracing::warn!(?err, "the window did not open");
         }
+    }
+
+    /// Show the session after or before the one in the window `from`, in
+    /// the order the daemon keeps them, in that window.
+    fn step_session(&mut self, from: Option<WindowId>, forward: bool) {
+        let Some(current) = self.terminal_mut(from).map(|t| t.session()) else {
+            return;
+        };
+        let listed = match self.runtime.block_on(session::list(&self.socket)) {
+            Ok(listed) => listed,
+            Err(err) => {
+                tracing::warn!(?err, "the sessions were not listed");
+                return;
+            }
+        };
+        let ids: Vec<u128> = listed.iter().map(|session| session.id).collect();
+        if let Some(next) = roster::neighbour(&ids, current, forward) {
+            self.show_session(from, next);
+        }
+    }
+
+    /// Show the session `id` in the window `from` in place of its own.
+    fn show_session(&mut self, from: Option<WindowId>, id: u128) {
+        let Some(window) = from.or(self.focused) else {
+            return;
+        };
+        let (runtime, proxy, socket, drawn) =
+            (&self.runtime, self.proxy.clone(), &self.socket, &self.drawn);
+        if let Some(terminal) = self.terminals.iter_mut().find(|t| t.id() == window)
+            && let Err(err) = terminal.switch(runtime, proxy, socket, drawn, id)
+        {
+            tracing::warn!(?err, "the session was not shown");
+        }
+        self.list_sessions();
+    }
+
+    /// End the session `id`; the windows showing it close as it ends.
+    fn end_session(&mut self, id: u128) {
+        if let Err(err) = self.runtime.block_on(session::end(&self.socket, id)) {
+            tracing::warn!(?err, "the session was not ended");
+        }
+        self.list_sessions();
     }
 
     /// The window `from`, or the one last focused.
@@ -389,7 +452,7 @@ impl App {
         {
             let _ = event_loop;
             if let Some(menu) = self.menu.as_ref() {
-                menu.pop_up(terminal.window(), which, at);
+                menu.pop_up(terminal.window(), which, &self.sessions, at);
             }
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -397,7 +460,8 @@ impl App {
             let on_screen = at
                 .or_else(|| terminal.pointer())
                 .and_then(|at| terminal.on_screen(at));
-            match Popup::open(event_loop, &self.runtime, which.entries(), on_screen) {
+            let lines = crate::menu::lines(which.entries(), &self.sessions);
+            match Popup::open(event_loop, &self.runtime, lines, on_screen) {
                 Ok(popup) => self.popup = Some((popup, id)),
                 Err(err) => tracing::warn!(?err, "the window's menu did not open"),
             }
@@ -429,14 +493,30 @@ impl App {
     }
 
     /// Show the palette, where it is open, what the daemon keeps now.
+    /// Take the sessions the daemon keeps now: for the menus, and the
+    /// palette where it is open.
     fn list_sessions(&mut self) {
-        let Some(palette) = self.palette.as_mut() else {
-            return;
+        let listed = match self.runtime.block_on(session::list(&self.socket)) {
+            Ok(listed) => listed,
+            Err(err) => {
+                tracing::warn!(?err, "the sessions were not listed");
+                return;
+            }
         };
-        self.listed_at = Some(Instant::now());
-        match self.runtime.block_on(session::list(&self.socket)) {
-            Ok(listed) => palette.show(roster::rows(&listed, place::home().as_deref())),
-            Err(err) => tracing::warn!(?err, "the sessions were not listed"),
+        let rows = roster::rows(&listed, place::home().as_deref());
+        self.sessions = rows
+            .iter()
+            .map(|row| Listed {
+                id: row.id,
+                title: row.title.clone(),
+            })
+            .collect();
+        if let Some(menu) = self.menu.as_ref() {
+            menu.list(&self.sessions);
+        }
+        if let Some(palette) = self.palette.as_mut() {
+            self.listed_at = Some(Instant::now());
+            palette.show(rows);
         }
     }
 
@@ -576,6 +656,8 @@ impl ApplicationHandler<Event> for App {
         }
         if matches!(event, WindowEvent::Focused(true)) {
             self.focused = Some(id);
+            // A session may have started or ended while Cattery was away.
+            self.list_sessions();
         }
         if let WindowEvent::ThemeChanged(theme) = event
             && self.system != Some(theme)
@@ -596,11 +678,12 @@ impl ApplicationHandler<Event> for App {
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: Event) {
         match event {
-            Event::Session(session, event) => {
-                let Some(terminal) = self.terminals.iter_mut().find(|t| t.session() == session)
+            Event::Session(link, event) => {
+                let Some(terminal) = self.terminals.iter_mut().find(|t| t.link_number() == link)
                 else {
                     return;
                 };
+                let session = terminal.session();
                 let id = terminal.id();
                 match terminal.session_event(event) {
                     Ok(true) => {}

@@ -4,7 +4,9 @@
 //! On Linux, muda draws menus only into GTK windows, which winit's are
 //! not, so the menu macOS and Windows show natively is drawn here instead.
 
-use egui::{CentralPanel, CornerRadius, Frame, Key, Margin, Sense, Stroke, vec2};
+use egui::{
+    Align2, CentralPanel, CornerRadius, FontId, Frame, Key, Margin, Rect, Sense, Stroke, vec2,
+};
 use tokio::runtime::Runtime;
 use winit::dpi::{LogicalSize, PhysicalPosition};
 use winit::event::WindowEvent;
@@ -13,7 +15,7 @@ use winit::window::{Window, WindowId, WindowLevel};
 
 use crate::keys::Command;
 use crate::look::Tokens;
-use crate::menu::Entry;
+use crate::menu::Line;
 use crate::surface::Surface;
 
 /// What the menu asks of the app.
@@ -24,30 +26,32 @@ pub enum Asked {
     Closed,
 }
 
-const WIDTH: f64 = 220.0;
+const WIDTH: f64 = 260.0;
 const ITEM: f64 = 24.0;
 const SEPARATOR: f64 = 9.0;
 const PADDING: f64 = 5.0;
+/// The width of a session's End button.
+const END: f32 = 44.0;
 
 pub struct Popup {
     surface: Surface,
-    entries: &'static [Entry],
+    lines: Vec<Line>,
     /// Whether the menu has been in front.
     focused: bool,
 }
 
 impl Popup {
-    /// Open a menu of `entries` at `at` on the screen, where the platform
+    /// Open a menu of `lines` at `at` on the screen, where the platform
     /// lets a window be placed.
     pub fn open(
         event_loop: &ActiveEventLoop,
         runtime: &Runtime,
-        entries: &'static [Entry],
+        lines: Vec<Line>,
         at: Option<PhysicalPosition<i32>>,
     ) -> anyhow::Result<Self> {
         let mut attributes = Window::default_attributes()
             .with_title("Cattery")
-            .with_inner_size(size(entries))
+            .with_inner_size(size(&lines))
             .with_resizable(false)
             .with_decorations(false)
             .with_window_level(WindowLevel::AlwaysOnTop);
@@ -63,7 +67,7 @@ impl Popup {
         }
         Ok(Self {
             surface: Surface::open(event_loop, runtime, attributes)?,
-            entries,
+            lines,
             focused: false,
         })
     }
@@ -84,26 +88,26 @@ impl Popup {
         if !self.surface.take(event) {
             return Asked::Nothing;
         }
-        let entries = self.entries;
+        let lines = &self.lines;
         let mut asked = Asked::Nothing;
-        self.surface.frame(|ui| asked = menu(ui, entries));
+        self.surface.frame(|ui| asked = menu(ui, lines));
         asked
     }
 }
 
-/// The size a menu of `entries` takes, in logical pixels.
-fn size(entries: &[Entry]) -> LogicalSize<f64> {
-    let height = entries
+/// The size a menu of `lines` takes, in logical pixels.
+fn size(lines: &[Line]) -> LogicalSize<f64> {
+    let height = lines
         .iter()
-        .map(|entry| match entry {
-            Entry::Item(..) => ITEM,
-            Entry::Separator => SEPARATOR,
+        .map(|line| match line {
+            Line::Item(..) | Line::Session(_) => ITEM,
+            Line::Separator => SEPARATOR,
         })
         .sum::<f64>();
     LogicalSize::new(WIDTH, height + 2.0 * PADDING)
 }
 
-fn menu(ui: &mut egui::Ui, entries: &[Entry]) -> Asked {
+fn menu(ui: &mut egui::Ui, lines: &[Line]) -> Asked {
     let tokens = Tokens::of(ui.visuals().dark_mode);
     if ui.input_mut(|input| input.consume_key(egui::Modifiers::NONE, Key::Escape)) {
         return Asked::Closed;
@@ -120,37 +124,22 @@ fn menu(ui: &mut egui::Ui, entries: &[Entry]) -> Asked {
         )
         .show(ui, |ui| {
             ui.spacing_mut().item_spacing = vec2(0.0, 0.0);
-            for entry in entries {
-                match *entry {
-                    Entry::Item(command, label) => {
-                        #[expect(clippy::cast_possible_truncation, reason = "a row's height")]
-                        let height = ITEM as f32;
-                        let (rect, response) = ui.allocate_exact_size(
-                            vec2(ui.available_width(), height),
-                            Sense::click(),
-                        );
-                        let hovered = response.hovered();
-                        if hovered {
-                            ui.painter()
-                                .rect_filled(rect, CornerRadius::same(4), tokens.accent);
-                        }
-                        let color = if hovered {
-                            tokens.on_accent
-                        } else {
-                            tokens.text
-                        };
-                        ui.painter().text(
-                            rect.left_center() + vec2(10.0, 0.0),
-                            egui::Align2::LEFT_CENTER,
-                            label,
-                            egui::FontId::proportional(13.0),
-                            color,
-                        );
-                        if response.clicked() {
-                            asked = Asked::Run(command);
+            for line in lines {
+                match line {
+                    Line::Item(command, label) => {
+                        if row(ui, tokens, label, None).0 {
+                            asked = Asked::Run(*command);
                         }
                     }
-                    Entry::Separator => {
+                    Line::Session(listed) => {
+                        let (chosen, ended) = row(ui, tokens, &listed.title, Some("End"));
+                        if ended {
+                            asked = Asked::Run(Command::EndSessionOf(listed.id));
+                        } else if chosen {
+                            asked = Asked::Run(Command::ShowSession(listed.id));
+                        }
+                    }
+                    Line::Separator => {
                         #[expect(clippy::cast_possible_truncation, reason = "a row's height")]
                         let height = SEPARATOR as f32;
                         let (rect, _) = ui.allocate_exact_size(
@@ -167,4 +156,58 @@ fn menu(ui: &mut egui::Ui, entries: &[Entry]) -> Asked {
             }
         });
     asked
+}
+
+/// A row reading `label`, with a button reading `button` at its right where
+/// there is one; whether the row, and whether the button, was clicked.
+fn row(ui: &mut egui::Ui, tokens: Tokens, label: &str, button: Option<&str>) -> (bool, bool) {
+    #[expect(clippy::cast_possible_truncation, reason = "a row's height")]
+    let height = ITEM as f32;
+    let (rect, response) =
+        ui.allocate_exact_size(vec2(ui.available_width(), height), Sense::click());
+    let hovered = response.hovered();
+    if hovered {
+        ui.painter()
+            .rect_filled(rect, CornerRadius::same(4), tokens.accent);
+    }
+    let color = if hovered {
+        tokens.on_accent
+    } else {
+        tokens.text
+    };
+    let pressed = button.is_some_and(|button| {
+        let at = Rect::from_min_max(rect.right_top() - vec2(END, 0.0), rect.right_bottom());
+        let pressed = ui.interact(at, response.id.with("button"), Sense::click());
+        if pressed.hovered() {
+            ui.painter()
+                .rect_filled(at.shrink(2.0), CornerRadius::same(4), tokens.error);
+        }
+        ui.painter().text(
+            at.center(),
+            Align2::CENTER_CENTER,
+            button,
+            FontId::proportional(11.0),
+            if pressed.hovered() {
+                tokens.on_accent
+            } else {
+                color
+            },
+        );
+        pressed.clicked()
+    });
+    let room = rect.width() - 20.0 - if button.is_some() { END } else { 0.0 };
+    let text = ui.painter().layout_job(crate::palette::one_line(
+        egui::text::LayoutJob::simple_singleline(
+            label.to_owned(),
+            FontId::proportional(13.0),
+            color,
+        ),
+        room,
+    ));
+    ui.painter().galley(
+        rect.left_center() + vec2(10.0, -text.size().y / 2.0),
+        text,
+        color,
+    );
+    (response.clicked() && !pressed, pressed)
 }
