@@ -42,7 +42,7 @@ macOS, Linux and Windows.
 | --- | --- |
 | `crates/cattery/` | the `cattery` app binary |
 | `crates/cattery/themes/` | the themes Cattery ships, with their licences |
-| `assets/logo/` | the icon, the PNGs `scripts/icon.sh` renders from it, and the logos that set the name beside it in Quicksand Bold, outlined |
+| `assets/logo/` | the icon, the PNGs `scripts/icon.sh` renders from it, `cattery.icon` (the icon as Icon Composer keeps it, light and dark, for macOS 26), and the logos that set the name beside it in Quicksand Bold, outlined |
 | `docs/` | concept, ADRs, specs, references, and the README's screenshots in `docs/images/` |
 | `scripts/` | helpers the release and `just ci` run |
 

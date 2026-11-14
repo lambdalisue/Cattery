@@ -71,7 +71,9 @@ resize it.
 
 Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
-force and dark while the dark theme is, and changes with it.
+force and dark while the dark theme is, and changes with it. Before Cattery
+runs, macOS 26 shows it light or dark as the icon style in System Settings
+is; earlier macOS shows it light.
 
 Find (Command-F on macOS, Control-Shift-F on Linux and Windows, or the
 menu) searches the session's history: the query is typed into a bar at the

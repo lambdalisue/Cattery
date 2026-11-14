@@ -10,6 +10,8 @@
 	<string>cattery</string>
 	<key>CFBundleIconFile</key>
 	<string>cattery</string>
+	<key>CFBundleIconName</key>
+	<string>cattery</string>
 	<key>CFBundleIdentifier</key>
 	<string>io.github.lambdalisue.cattery</string>
 	<key>CFBundleInfoDictionaryVersion</key>
