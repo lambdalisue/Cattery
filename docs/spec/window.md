@@ -157,9 +157,10 @@ Windows, or Command Palette… in the menu) opens over the window in
 front. It lists the sessions Cattery's daemon keeps, newest first, but for
 the one that window shows, and then Cattery's commands with their
 shortcuts. It opens on the session used before that one, so Return goes
-back to it. Each session says where it is,
-what runs in it, and when it was last used; the one chosen is described
-beside the list: its directory and where it started, what runs in it, when
+back to it. Each session says where it is, what runs in it, when it was last
+used, its last command and how it went, when it was created, and its size;
+the one chosen is described beside the list: its directory and where it
+started, what runs in it, when
 it was created (for a session Cattery created), when it was last used, its
 last command and how it ended or that it still runs, and its size.
 

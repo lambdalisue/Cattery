@@ -55,7 +55,7 @@ struct Entry<'a> {
     choice: Choice,
     title: String,
     /// The line under the title.
-    detail: String,
+    detail: Vec<String>,
     /// What is shown at the right: a command's chord.
     hint: Option<String>,
     /// The characters of the title the query matched.
@@ -206,7 +206,7 @@ fn entries<'a>(rows: &'a [Row], query: &str, now: SystemTime) -> (Vec<Entry<'a>>
                     choice: Choice::Session(row.id),
                     title: row.title.clone(),
                     detail: summary(row, now),
-                    hint: None,
+                    hint: Some(used(row.state, now)),
                     marks: titled.map(|found| found.marks).unwrap_or_default(),
                     row: Some(row),
                 },
@@ -228,7 +228,7 @@ fn entries<'a>(rows: &'a [Row], query: &str, now: SystemTime) -> (Vec<Entry<'a>>
         Entry {
             choice: Choice::Command(command),
             title: commands::label(command).to_owned(),
-            detail: String::new(),
+            detail: Vec::new(),
             hint: None,
             marks: found.marks,
             row: None,
@@ -260,18 +260,54 @@ fn position(rows: &[Row], query: &str, choice: Option<Choice>, now: SystemTime) 
         .position(|entry| entry.choice == choice)
 }
 
-/// A session in one line: where it is, what runs in it, and when it was
-/// last used.
-fn summary(row: &Row, now: SystemTime) -> String {
+/// The lines under a session's title: where it is and what runs in it;
+/// then how its last command went, when it was created, and its size.
+fn summary(row: &Row, now: SystemTime) -> Vec<String> {
+    let joined = |parts: Vec<Option<String>>| -> Option<String> {
+        let parts: Vec<String> = parts.into_iter().flatten().collect();
+        (!parts.is_empty()).then(|| parts.join(" · "))
+    };
     [
-        Some(row.place.clone()).filter(|place| !place.is_empty()),
-        row.process.clone(),
-        Some(used(row.state, now)),
+        joined(vec![
+            Some(row.place.clone()).filter(|place| !place.is_empty()),
+            row.process.clone(),
+        ]),
+        joined(vec![
+            briefly(row),
+            row.created
+                .map(|created| format!("Created {}", roster::ago(created, now).to_lowercase())),
+            Some(format!("{}×{}", row.size.0, row.size.1)),
+        ]),
     ]
     .into_iter()
     .flatten()
-    .collect::<Vec<_>>()
-    .join(" · ")
+    .collect()
+}
+
+/// A session's last command in a few characters: a mark for how it went,
+/// the line, and the code it failed with.
+fn briefly(row: &Row) -> Option<String> {
+    let running = row.command.as_ref().map(|ran| ran.outcome) == Some(Outcome::Running);
+    let failed = match (row.command.as_ref().map(|ran| ran.outcome), row.exit) {
+        (Some(Outcome::Running), _) => false,
+        (_, Some(code)) => code != 0,
+        (Some(outcome), None) => outcome == Outcome::Failed,
+        (None, None) => return None,
+    };
+    let mark = if running {
+        "▶"
+    } else if failed {
+        "✗"
+    } else {
+        "✓"
+    };
+    let code = row.exit.filter(|code| failed && *code != 0);
+    Some(match (&row.command, code) {
+        (Some(ran), Some(code)) => format!("{mark} {} ({code})", ran.line),
+        (Some(ran), None) => format!("{mark} {}", ran.line),
+        (None, Some(code)) => format!("{mark} exit {code}"),
+        (None, None) => mark.to_owned(),
+    })
 }
 
 /// When a session in `state` was last used.
@@ -555,10 +591,11 @@ fn side(ui: &mut Ui, tokens: Tokens, entry: Option<&Entry<'_>>, now: SystemTime)
     }
 }
 
-/// One entry: its title, matched letters marked, a line under it, and its
-/// hint at the right; drawn as chosen when it is.
+/// One entry: its title, matched letters marked, the lines under it, and
+/// its hint at the right of the title; drawn as chosen when it is.
 fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::Response {
-    let tall = if entry.detail.is_empty() { 26.0 } else { 42.0 };
+    #[expect(clippy::cast_precision_loss, reason = "an entry has a few lines")]
+    let tall = 16.0f32.mul_add(entry.detail.len() as f32, 26.0);
     let (rect, response) = ui.allocate_exact_size(vec2(ui.available_width(), tall), Sense::click());
     let (text, muted, marked) = if chosen {
         ui.painter()
@@ -589,21 +626,20 @@ fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::R
     };
     ui.painter()
         .galley(pos2(left, top - title.size().y / 2.0), title, text);
-    if !entry.detail.is_empty() {
+    let mut middle = rect.top() + 29.0;
+    for line in &entry.detail {
         let detail = ui.painter().layout_job(one_line(
-            LayoutJob::simple_singleline(entry.detail.clone(), FontId::proportional(11.0), muted),
-            width,
+            LayoutJob::simple_singleline(line.clone(), FontId::proportional(11.0), muted),
+            rect.width() - 20.0,
         ));
-        ui.painter().galley(
-            pos2(left, rect.top() + 29.0 - detail.size().y / 2.0),
-            detail,
-            muted,
-        );
+        ui.painter()
+            .galley(pos2(left, middle - detail.size().y / 2.0), detail, muted);
+        middle += 16.0;
     }
     if let Some(hint) = hint {
         let at = pos2(
             rect.right() - 10.0 - hint.size().x,
-            rect.center().y - hint.size().y / 2.0,
+            top - hint.size().y / 2.0,
         );
         ui.painter().galley(at, hint, muted);
     }
@@ -745,11 +781,58 @@ mod tests {
     }
 
     #[test]
-    fn a_session_says_where_it_is_what_runs_and_when_it_was_used() {
+    fn a_session_says_where_it_is_and_what_runs_then_how_its_last_command_went() {
+        let now = SystemTime::now();
+        let mut busy = row(1, "vim");
+        busy.created = Some(now - Duration::from_secs(3 * 3600));
+        busy.command = Some(roster::Ran {
+            line: "cargo test".to_owned(),
+            outcome: Outcome::Succeeded,
+        });
         assert_eq!(
-            summary(&row(1, "vim"), SystemTime::now()),
-            "~/src · zsh · Used 2 min ago"
+            summary(&busy, now),
+            ["~/src · zsh", "✓ cargo test · Created 3 h ago · 80×24"]
         );
+    }
+
+    #[test]
+    fn a_session_little_is_known_of_still_tells_its_size() {
+        let mut bare = row(1, "zsh");
+        bare.place = String::new();
+        bare.process = None;
+        assert_eq!(summary(&bare, SystemTime::now()), ["80×24"]);
+    }
+
+    #[test]
+    fn a_session_s_entry_says_at_its_right_when_it_was_used() {
+        let rows = [row(1, "vim")];
+        let (sessions, _) = entries(&rows, "", SystemTime::now());
+        assert_eq!(sessions[0].hint.as_deref(), Some("Used 2 min ago"));
+    }
+
+    #[test]
+    fn the_last_command_is_told_briefly_with_a_mark_for_how_it_went() {
+        let mut shown = row(1, "zsh");
+        assert_eq!(briefly(&shown), None);
+        shown.exit = Some(2);
+        assert_eq!(briefly(&shown).as_deref(), Some("✗ exit 2"));
+        shown.command = Some(roster::Ran {
+            line: "make".to_owned(),
+            outcome: Outcome::Failed,
+        });
+        assert_eq!(briefly(&shown).as_deref(), Some("✗ make (2)"));
+        shown.exit = None;
+        shown.command = Some(roster::Ran {
+            line: "cargo build".to_owned(),
+            outcome: Outcome::Running,
+        });
+        assert_eq!(briefly(&shown).as_deref(), Some("▶ cargo build"));
+        shown.exit = Some(0);
+        shown.command = Some(roster::Ran {
+            line: "ls".to_owned(),
+            outcome: Outcome::Succeeded,
+        });
+        assert_eq!(briefly(&shown).as_deref(), Some("✓ ls"));
     }
 
     #[test]
