@@ -121,22 +121,20 @@ impl Palette {
         self.surface.focus();
     }
 
-    /// List `rows` from now on.
-    pub fn show(&mut self, rows: Vec<Row>) {
+    /// List `rows` from now on; the first sessions listed start on
+    /// `previous`.
+    pub fn show(&mut self, rows: Vec<Row>, previous: Option<u128>) {
         if rows != self.rows {
             // The same entry stays chosen as the list changes under it.
             let now = SystemTime::now();
-            let was = {
+            let was = if self.rows.is_empty() {
+                previous.map(Choice::Session)
+            } else {
                 let (sessions, commands) = entries(&self.rows, &self.query, now);
                 at(&sessions, &commands, self.chosen).map(|entry| entry.choice)
             };
             self.rows = rows;
-            let (sessions, commands) = entries(&self.rows, &self.query, now);
-            if let Some(position) = sessions
-                .iter()
-                .chain(&commands)
-                .position(|entry| Some(entry.choice) == was)
-            {
+            if let Some(position) = position(&self.rows, &self.query, was, now) {
                 self.chosen = position;
             }
             self.surface.redraw();
@@ -250,6 +248,16 @@ fn at<'e, 'a>(
     chosen: usize,
 ) -> Option<&'e Entry<'a>> {
     sessions.iter().chain(commands).nth(chosen)
+}
+
+/// Where `choice` stands among the entries matching `query`.
+fn position(rows: &[Row], query: &str, choice: Option<Choice>, now: SystemTime) -> Option<usize> {
+    let choice = choice?;
+    let (sessions, commands) = entries(rows, query, now);
+    sessions
+        .iter()
+        .chain(&commands)
+        .position(|entry| entry.choice == choice)
 }
 
 /// A session in one line: where it is, what runs in it, and when it was
@@ -679,6 +687,19 @@ mod tests {
         assert_eq!(choices(&sessions), [Choice::Session(1), Choice::Session(2)]);
         assert_eq!(commands.len(), commands::LISTED.len());
         assert_eq!(commands[0].choice, Choice::Command(Command::NewWindow));
+    }
+
+    #[test]
+    fn an_entry_is_found_where_the_list_holds_it() {
+        let rows = [row(1, "vim"), row(2, "cargo")];
+        let now = SystemTime::now();
+        assert_eq!(position(&rows, "", Some(Choice::Session(2)), now), Some(1));
+        assert_eq!(
+            position(&rows, "", Some(Choice::Command(Command::NewWindow)), now),
+            Some(2)
+        );
+        assert_eq!(position(&rows, "", Some(Choice::Session(9)), now), None);
+        assert_eq!(position(&rows, "", None, now), None);
     }
 
     #[test]

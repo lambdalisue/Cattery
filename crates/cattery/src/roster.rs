@@ -145,6 +145,31 @@ pub fn ago(then: SystemTime, now: SystemTime) -> String {
     }
 }
 
+/// `rows` without the session `current` shows.
+pub fn others(mut rows: Vec<Row>, current: Option<u128>) -> Vec<Row> {
+    rows.retain(|row| Some(row.id) != current);
+    rows
+}
+
+/// The session among `others` used last: the first of `recent`, most
+/// recent first, still running; failing that, one in a window, and then the
+/// one idle the shortest.
+pub fn previous(others: &[Row], recent: &[u128]) -> Option<u128> {
+    let running = || others.iter().filter(|row| row.state != State::Ended);
+    recent
+        .iter()
+        .find(|id| running().any(|row| row.id == **id))
+        .copied()
+        .or_else(|| {
+            running()
+                .min_by_key(|row| match row.state {
+                    State::Background(idle) => idle,
+                    State::Shown(_) | State::Ended => Duration::ZERO,
+                })
+                .map(|row| row.id)
+        })
+}
+
 /// The session after `current` among `sessions`, or before it unless
 /// `forward`, going round past either end; the first where `current` is
 /// not among them, and none where no other session is.
@@ -189,6 +214,73 @@ mod tests {
     fn a_session_the_list_does_not_hold_steps_to_its_first() {
         assert_eq!(neighbour(&[1, 2], 9, true), Some(1));
         assert_eq!(neighbour(&[1, 2], 9, false), Some(1));
+    }
+
+    fn row(id: u128, state: State) -> Row {
+        Row {
+            id,
+            title: String::new(),
+            place: String::new(),
+            state,
+            process: None,
+            started_in: None,
+            created: None,
+            exit: None,
+            command: None,
+            size: (80, 24),
+        }
+    }
+
+    fn ids(rows: &[Row]) -> Vec<u128> {
+        rows.iter().map(|row| row.id).collect()
+    }
+
+    #[test]
+    fn the_session_in_front_is_left_out_of_the_others() {
+        let listed = vec![row(1, State::Shown(1)), row(2, State::Shown(1))];
+        assert_eq!(ids(&others(listed.clone(), Some(2))), [1]);
+        assert_eq!(ids(&others(listed, None)), [1, 2]);
+    }
+
+    #[test]
+    fn the_session_used_last_comes_before_the_rest() {
+        let others = [
+            row(1, State::Shown(1)),
+            row(2, State::Background(Duration::ZERO)),
+            row(3, State::Background(Duration::ZERO)),
+        ];
+        assert_eq!(previous(&others, &[9, 3, 2]), Some(3));
+    }
+
+    #[test]
+    fn a_session_used_last_that_has_ended_or_gone_is_passed_over() {
+        let others = [
+            row(1, State::Ended),
+            row(2, State::Background(Duration::ZERO)),
+        ];
+        assert_eq!(previous(&others, &[7, 1, 2]), Some(2));
+    }
+
+    #[test]
+    fn with_none_used_yet_a_session_in_a_window_and_then_the_least_idle_come_first() {
+        let others = [
+            row(1, State::Background(Duration::from_secs(60))),
+            row(2, State::Background(Duration::from_secs(5))),
+            row(3, State::Ended),
+        ];
+        assert_eq!(previous(&others, &[]), Some(2));
+        let shown = [
+            others[0].clone(),
+            row(4, State::Shown(1)),
+            others[1].clone(),
+        ];
+        assert_eq!(previous(&shown, &[]), Some(4));
+    }
+
+    #[test]
+    fn with_no_other_session_running_none_comes_before() {
+        assert_eq!(previous(&[row(1, State::Ended)], &[1]), None);
+        assert_eq!(previous(&[], &[]), None);
     }
 
     fn session(id: u128, sequence: u64) -> SessionInfo {

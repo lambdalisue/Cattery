@@ -92,6 +92,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         system: None,
         terminals: Vec::new(),
         focused: None,
+        recent: Vec::new(),
         menu: None,
         palette: None,
         sessions: Vec::new(),
@@ -151,6 +152,8 @@ struct App {
     terminals: Vec<Terminal>,
     /// The window last focused, which a window opened "here" opens from.
     focused: Option<WindowId>,
+    /// The sessions shown in front, the latest first.
+    recent: Vec<u128>,
     menu: Option<Menu>,
     palette: Option<Palette>,
     /// The sessions the daemon kept when they were last listed.
@@ -339,7 +342,23 @@ impl App {
         {
             tracing::warn!(?err, "the session was not shown");
         }
+        self.note_in_front();
         self.list_sessions();
+    }
+
+    /// The session of the window in front, the session in front from now.
+    fn note_in_front(&mut self) {
+        if let Some(id) = self.in_front() {
+            self.recent.retain(|recent| *recent != id);
+            self.recent.insert(0, id);
+        }
+    }
+
+    /// The session the window last focused shows.
+    fn in_front(&self) -> Option<u128> {
+        self.focused
+            .and_then(|id| self.terminal(id))
+            .map(Terminal::session)
     }
 
     /// End the session `id`; the windows showing it close as it ends.
@@ -550,9 +569,11 @@ impl App {
         if let Some(menu) = self.menu.as_ref() {
             menu.list(&self.sessions);
         }
+        let others = roster::others(rows, self.in_front());
+        let previous = roster::previous(&others, &self.recent);
         if let Some(palette) = self.palette.as_mut() {
             self.listed_at = Some(Instant::now());
-            palette.show(rows);
+            palette.show(others, previous);
         }
     }
 
@@ -692,6 +713,7 @@ impl ApplicationHandler<Event> for App {
         }
         if matches!(event, WindowEvent::Focused(true)) {
             self.focused = Some(id);
+            self.note_in_front();
             // A session may have started or ended while Cattery was away.
             self.list_sessions();
         }
