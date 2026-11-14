@@ -50,7 +50,10 @@ The window shows the session's screen as felis draws it, and every key
 typed in the window reaches the session. Text typed through the platform's
 input method is shown at the cursor while it is composed, with the input
 method's candidates beside it, and reaches the session once committed.
-Resizing the window resizes the session to the cells that fit.
+Resizing the window resizes the session to the cells that fit, with a sliver
+of space kept at the left and the right. The width they leave over is split
+evenly between the two sides, and what they leave below stays below; the space
+around the cells takes the colour of the cells at its edge.
 
 Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in

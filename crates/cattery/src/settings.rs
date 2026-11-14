@@ -76,6 +76,7 @@ pub fn look(settings: &EffectiveConfig) -> RendererConfig {
         font_bold_italic: face(&font.bold_italic),
         // macOS blends text in sRGB already.
         text_alpha_correction: !cfg!(target_os = "macos"),
+        post_stages: vec![crate::grid::margin()],
         ..RendererConfig::default()
     }
 }
@@ -294,6 +295,18 @@ mod tests {
         assert_eq!(look.theme.cursor.as_deref(), Some("#00ff00"));
         assert_eq!(look.theme.palette.len(), 1);
         assert_eq!(look.font_size_physical_px, None);
+    }
+
+    #[test]
+    fn the_look_fills_the_margin_around_the_grid() {
+        let look = look(&settings(""));
+        assert_eq!(
+            look.post_stages
+                .iter()
+                .map(|stage| stage.label.as_str())
+                .collect::<Vec<_>>(),
+            [crate::grid::margin().label.as_str()]
+        );
     }
 
     #[test]

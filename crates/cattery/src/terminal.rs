@@ -688,7 +688,7 @@ impl Terminal {
     fn pointed(&self) -> Option<((u16, u16), (u16, u16))> {
         let position = self.pointer?;
         let cell = self.renderer.cell_metrics();
-        let origin: [f32; 2] = self.renderer.content_origin_px().into();
+        let origin = self.origin();
         let screen = self.shadow.screen();
         let at = [position.x, position.y];
         Some((
@@ -949,12 +949,23 @@ impl Terminal {
         self.place_input_method();
     }
 
+    /// Where the grid's top-left corner is shown, in physical pixels.
+    fn origin(&self) -> [f32; 2] {
+        let (x, y) = self.renderer.content_origin_px();
+        let inset = grid::inset(
+            self.window.inner_size().width,
+            self.renderer.cell_metrics().width,
+        );
+        #[expect(clippy::cast_precision_loss, reason = "an inset is under a cell")]
+        [x + inset as f32, y]
+    }
+
     /// Tell the platform where the cursor is, so an input method shows
     /// its candidates beside it.
     fn place_input_method(&self) {
         let cell = self.renderer.cell_metrics();
         let cursor = self.shadow.screen().cursor();
-        let (x, y) = self.renderer.content_origin_px();
+        let [x, y] = self.origin();
         self.window.set_ime_cursor_area(
             PhysicalPosition::new(
                 f64::from(x) + f64::from(cursor.col) * f64::from(cell.width),
