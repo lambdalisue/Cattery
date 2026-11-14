@@ -95,8 +95,22 @@ fn shade(uv: vec2<f32>) -> vec4<f32> {
     // The corner of the nearest edge cell rather than its nearest pixel:
     // glyphs reach a cell's edges (a `d`'s stem, a `│`) far more often than
     // its corner, and a glyph's pixel stretched across the margin shows.
-    let corner = max(start + floor((nearest - start) / cell) * cell, first);
+    var corner = max(start + floor((nearest - start) / cell) * cell, first);
+    // The cursor is no colour of the cell it is on: stretched across the
+    // margin it would draw a bar out to the window's edge. The cell beside
+    // it, along the edge, gives the colour instead.
+    if under_cursor(corner - shift, window) {
+        let left = corner.x - cell.x;
+        corner.x = select(corner.x + cell.x, left, left >= first.x);
+    }
     return textureLoad(backbuffer, vec2<i32>(max(corner - shift, vec2<f32>(0.0))), 0);
+}
+
+// Whether the pixel `at` of what felis drew is under the cursor felis drew.
+fn under_cursor(at: vec2<f32>, window: vec2<f32>) -> bool {
+    let low = u.cursor_rect.xy * window;
+    let high = low + u.cursor_rect.zw * window;
+    return u.cursor_rect.z > 0.0 && all(at >= floor(low)) && all(at < ceil(high));
 }
 
 // Which of the title bar's buttons is at `at`, mirroring `chrome::Bar::part`:
