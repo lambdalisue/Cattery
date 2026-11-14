@@ -213,10 +213,13 @@ pub struct Menu {
 }
 
 impl Menu {
-    /// Show the menu, sending what is chosen in it to `proxy`.
+    /// Show the menu, sending what is chosen in it, and on macOS a click on
+    /// the icon in the Dock, to `proxy`.
     pub fn install(proxy: EventLoopProxy<Event>, keymap: &Keymap) -> anyhow::Result<Self> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
+            #[cfg(target_os = "macos")]
+            let dock = proxy.clone();
             muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
                 if let Some(command) = command(event.id().as_ref()) {
                     _ = proxy.send_event(Event::Command(command));
@@ -229,7 +232,7 @@ impl Menu {
             #[cfg(target_os = "macos")]
             let dock_menu = platform::menu(&lines(DOCK_MENU, &[]))?;
             #[cfg(target_os = "macos")]
-            offer_in_dock(&dock_menu);
+            answer_dock(&dock_menu, dock);
             Ok(Self {
                 #[cfg(target_os = "macos")]
                 _menu: menu,
@@ -331,27 +334,43 @@ impl Menu {
 }
 
 /// Have AppKit show `menu`, which outlives the app's run, when Cattery's
-/// icon in the Dock is right-clicked.
+/// icon in the Dock is right-clicked, and tell `proxy` when the icon is
+/// clicked.
 #[cfg(target_os = "macos")]
-fn offer_in_dock(menu: &muda::Menu) {
+fn answer_dock(menu: &muda::Menu, proxy: EventLoopProxy<Event>) {
+    use std::ffi::CString;
     use std::sync::atomic::{AtomicPtr, Ordering};
+    use std::sync::{Mutex, OnceLock};
 
     use muda::ContextMenu as _;
-    use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+    use objc2::encode::Encode as _;
+    use objc2::runtime::{AnyClass, AnyObject, Bool, Imp, Sel};
     use objc2::{class, msg_send, sel};
 
     type DockMenu = unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject) -> *mut AnyObject;
+    type Reopen = unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject, Bool) -> Bool;
 
     static DOCK: AtomicPtr<AnyObject> = AtomicPtr::new(std::ptr::null_mut());
+    static PROXY: OnceLock<Mutex<EventLoopProxy<Event>>> = OnceLock::new();
 
     unsafe extern "C-unwind" fn dock_menu(_: &AnyObject, _: Sel, _: &AnyObject) -> *mut AnyObject {
         DOCK.load(Ordering::Relaxed)
     }
 
+    // AppKit still brings forward or restores a window there is; the app
+    // opens one only where there is none.
+    unsafe extern "C-unwind" fn reopen(_: &AnyObject, _: Sel, _: &AnyObject, _: Bool) -> Bool {
+        if let Some(proxy) = PROXY.get().and_then(|proxy| proxy.lock().ok()) {
+            _ = proxy.send_event(Event::Reopen);
+        }
+        Bool::YES
+    }
+
     DOCK.store(menu.ns_menu().cast(), Ordering::Relaxed);
-    // AppKit asks the application's delegate for the Dock's menu. winit's
-    // delegate gives none and winit offers no way to give one, so the method
-    // is added to its class.
+    _ = PROXY.set(Mutex::new(proxy));
+    // AppKit asks the application's delegate for the Dock's menu and what a
+    // click on the icon does. winit's delegate answers neither and winit
+    // offers no way to answer them, so the methods are added to its class.
     // SAFETY: AppKit's application and its delegate live as long as the app.
     let delegate: *mut AnyObject = unsafe {
         let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
@@ -359,22 +378,39 @@ fn offer_in_dock(menu: &muda::Menu) {
     };
     // SAFETY: a delegate AppKit hands out is a live object, or none.
     let Some(delegate) = (unsafe { delegate.as_ref() }) else {
-        tracing::warn!("the Dock's menu was not offered: the app has no delegate");
+        tracing::warn!("the Dock is not answered: the app has no delegate");
         return;
     };
     let class: *const AnyClass = delegate.class();
-    // SAFETY: `dock_menu` takes and returns what `applicationDockMenu:`
-    // does, as its type encoding says.
-    let added = unsafe {
-        objc2::ffi::class_addMethod(
-            class.cast_mut(),
+    let bool = Bool::ENCODING.to_string();
+    let methods = [
+        (
             sel!(applicationDockMenu:),
-            std::mem::transmute::<DockMenu, Imp>(dock_menu),
-            c"@@:@".as_ptr(),
-        )
-    };
-    if !added.as_bool() {
-        tracing::warn!("the Dock's menu was not offered: the delegate already gives one");
+            // SAFETY: the function takes and returns what the selector does.
+            unsafe { std::mem::transmute::<DockMenu, Imp>(dock_menu) },
+            "@@:@".to_owned(),
+        ),
+        (
+            sel!(applicationShouldHandleReopen:hasVisibleWindows:),
+            // SAFETY: the function takes and returns what the selector does.
+            unsafe { std::mem::transmute::<Reopen, Imp>(reopen) },
+            format!("{bool}@:@{bool}"),
+        ),
+    ];
+    for (name, imp, types) in methods {
+        let Ok(types) = CString::new(types) else {
+            continue;
+        };
+        // SAFETY: `imp` takes and returns what `types` says, which is what
+        // AppKit calls `name` with.
+        let added =
+            unsafe { objc2::ffi::class_addMethod(class.cast_mut(), name, imp, types.as_ptr()) };
+        if !added.as_bool() {
+            tracing::warn!(
+                ?name,
+                "the Dock is not answered: the delegate already answers"
+            );
+        }
     }
 }
 

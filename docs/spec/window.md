@@ -151,7 +151,10 @@ from the session palette; so does quitting Cattery, for every window.
 Command-W on macOS, and Control-Shift-W on Linux and Windows, close the
 window in front and leave its session running. Close Window and End Session
 (Command-Shift-W, Control-Alt-Shift-W) ends the session as well, which closes
-every window showing it. Cattery ends with its last window.
+every window showing it. On Linux and Windows Cattery ends with its last
+window. On macOS it keeps running with none, in the Dock and the menu bar,
+as a Mac app does, until it is quit; clicking its icon in the Dock then
+opens a new window.
 
 ## Sessions
 

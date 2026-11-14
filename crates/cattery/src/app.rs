@@ -36,11 +36,13 @@ pub enum Event {
     Command(Command),
     /// A program in a session posted a notification.
     Notified(notify::Posted),
+    /// Cattery's icon in the Dock was clicked.
+    Reopen,
 }
 
 /// Open a window on a new session of the daemon at `socket`, drawn and
 /// started as the settings file at `settings_path` says, and run until
-/// the last window closes.
+/// quit, or elsewhere than on macOS until the last window closes.
 pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()> {
     if let Some(project) = crate::folders::project() {
         crate::folders::rename_old(project.config_dir());
@@ -381,7 +383,8 @@ impl App {
         self.terminals.iter().find(|terminal| terminal.id() == id)
     }
 
-    /// Close the window `id`; the app ends with its last window.
+    /// Close the window `id`; the app ends with its last window, but on
+    /// macOS.
     fn close(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
         if let Some(at) = self.terminals.iter().position(|t| t.id() == id) {
             self.terminals.swap_remove(at).close(&self.runtime);
@@ -390,7 +393,10 @@ impl App {
             self.focused = None;
         }
         self.list_sessions();
-        if self.terminals.is_empty() {
+        // A Mac app stays in the Dock and the menu bar with no window open,
+        // to open the next one from there; elsewhere nothing would show that
+        // Cattery still runs.
+        if self.terminals.is_empty() && !cfg!(target_os = "macos") {
             event_loop.exit();
         }
     }
@@ -758,6 +764,11 @@ impl ApplicationHandler<Event> for App {
             }
             Event::SettingsChanged => self.reload(event_loop),
             Event::Command(command) => self.command(event_loop, command, None),
+            Event::Reopen => {
+                if self.terminals.is_empty() {
+                    self.command(event_loop, Command::NewWindow, None);
+                }
+            }
             // The window in front already shows what its program said.
             Event::Notified(posted) => {
                 if !self
