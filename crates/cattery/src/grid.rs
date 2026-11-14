@@ -66,12 +66,38 @@ pub fn margin(top: u32, button: u32) -> PostStageSource {
     }
 }
 
+/// The cell, as `(row, column)`, whose colour [`margin`] must not copy out
+/// for the cursor felis may paint on it: the cursor `at`, where it is
+/// `visible`, on a grid of `size` rows and columns, unless the view is
+/// `scrolled` back, where felis paints none.
+pub fn cursor_cell(
+    visible: bool,
+    scrolled: bool,
+    at: (u16, u16),
+    size: (u16, u16),
+) -> Option<(u16, u16)> {
+    (visible && !scrolled && at.0 < size.0 && at.1 < size.1).then_some(at)
+}
+
 #[cfg(test)]
 mod tests {
     use felis_render_core::layout::letterbox_origin;
     use felis_render_wgpu::validate_post_shader;
 
     use super::*;
+
+    #[test]
+    fn the_margin_stage_is_told_of_the_cursor_on_the_live_screen() {
+        assert_eq!(cursor_cell(true, false, (23, 5), (24, 80)), Some((23, 5)));
+    }
+
+    #[test]
+    fn a_hidden_cursor_or_one_scrolled_away_or_off_the_grid_is_none() {
+        assert_eq!(cursor_cell(false, false, (23, 5), (24, 80)), None);
+        assert_eq!(cursor_cell(true, true, (23, 5), (24, 80)), None);
+        assert_eq!(cursor_cell(true, false, (24, 5), (24, 80)), None);
+        assert_eq!(cursor_cell(true, false, (0, 80), (24, 80)), None);
+    }
 
     #[test]
     fn the_margin_stage_passes_felis_s_checks() {

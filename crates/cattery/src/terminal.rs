@@ -22,7 +22,7 @@ use felis_protocol::messages::{
 use felis_render_core::overlay::{ConfirmOverlay, SearchOverlay};
 use felis_render_core::palette::Theme;
 use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
-use felis_render_wgpu::{MouseState, Renderer, RendererConfig, SurfaceError};
+use felis_render_wgpu::{MouseState, Renderer, RendererConfig, SurfaceError, TrailState};
 use tokio::runtime::Runtime;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
@@ -1186,6 +1186,25 @@ impl Terminal {
             cell,
             self.shadow.viewport(),
         );
+        // Only felis's own cursor trail would tell the stage where the
+        // cursor is, and Cattery shows none.
+        let cursor = {
+            let screen = self.shadow.screen();
+            let at = screen.cursor();
+            grid::cursor_cell(
+                at.visible,
+                self.shadow.viewport() != 0,
+                (at.row, at.col),
+                (screen.rows(), screen.cols()),
+            )
+            .map(|(row, col)| self.renderer.cursor_rect_uv(screen, row, col))
+            .unwrap_or_default()
+        };
+        self.renderer.set_trail_state(TrailState {
+            cursor_rect: cursor,
+            prev_cursor_rect: cursor,
+            ..TrailState::default()
+        });
         let drawn = self.renderer.render(
             self.shadow.screen(),
             &dirty,
