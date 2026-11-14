@@ -3,26 +3,34 @@
 use std::path::Path;
 
 /// The title of a window whose shell last reported being in `cwd` (`OSC 7`,
-/// as reported) and whose program last called itself `reported` (`OSC 0` or
-/// `OSC 2`), behind the settings' `window.title_prefix`; `home` is written
-/// as `~`.
+/// as reported), behind the settings' `window.title_prefix`: the
+/// directory's name alone, `~` for `home`. Without a directory, what the
+/// program last called itself (`OSC 0` or `OSC 2`), `reported`.
 pub fn title(
     prefix: Option<&str>,
     cwd: Option<&str>,
     reported: Option<&str>,
     home: Option<&Path>,
 ) -> String {
-    let dir = cwd.and_then(reported_dir).map(|dir| shortened(&dir, home));
+    let dir = cwd.and_then(reported_dir).map(|dir| named(&dir, home));
     let reported = reported.filter(|title| !title.is_empty());
-    let shown = match (dir, reported) {
-        // A program that already names the directory needs it said once.
-        (Some(dir), Some(reported)) if reported.contains(dir.as_str()) => reported.to_owned(),
-        (Some(dir), Some(reported)) => format!("{dir} — {reported}"),
-        (Some(dir), None) => dir,
-        (None, Some(reported)) => reported.to_owned(),
-        (None, None) => "Cattery".to_owned(),
-    };
+    let shown = dir
+        .or_else(|| reported.map(str::to_owned))
+        .unwrap_or_else(|| "Cattery".to_owned());
     felis_client_core::config::compose_window_title(prefix, &shown)
+}
+
+/// The name a directory is called by: its last part, `~` for `home`, and
+/// `/` for the root.
+fn named(dir: &str, home: Option<&Path>) -> String {
+    let path = Path::new(dir);
+    if home.is_some_and(|home| path == home) {
+        return "~".to_owned();
+    }
+    path.file_name().map_or_else(
+        || dir.to_owned(),
+        |name| name.to_string_lossy().into_owned(),
+    )
 }
 
 /// The directory an `OSC 7` report names, whichever machine it is on:
@@ -69,41 +77,37 @@ mod tests {
     }
 
     #[test]
-    fn a_window_is_called_where_its_shell_is_and_what_runs_there() {
+    fn a_window_is_called_by_its_shell_s_directory_s_name_alone() {
         assert_eq!(
             title(
                 None,
-                Some("file://host/home/me/src"),
+                Some("file://host/home/me/src/cattery"),
                 Some("vim notes.md"),
                 home()
             ),
-            "~/src — vim notes.md"
+            "cattery"
         );
     }
 
     #[test]
-    fn a_directory_the_program_already_names_is_said_once() {
-        assert_eq!(
-            title(
-                None,
-                Some("file://host/home/me/src"),
-                Some("me@host:~/src"),
-                home()
-            ),
-            "me@host:~/src"
-        );
-    }
-
-    #[test]
-    fn either_alone_is_the_title() {
+    fn the_home_directory_is_a_tilde_and_the_root_a_slash() {
         assert_eq!(title(None, Some("file://host/home/me"), None, home()), "~");
+        assert_eq!(title(None, Some("file://host/"), None, home()), "/");
+    }
+
+    #[test]
+    fn a_directory_named_as_home_is_but_elsewhere_is_called_by_its_name() {
+        assert_eq!(
+            title(None, Some("file://host/srv/home/me"), None, home()),
+            "me"
+        );
+    }
+
+    #[test]
+    fn without_a_directory_the_program_s_own_title_is_shown() {
         assert_eq!(
             title(None, None, Some("vim notes.md"), home()),
             "vim notes.md"
-        );
-        assert_eq!(
-            title(None, Some("file://host/srv"), Some(""), home()),
-            "/srv"
         );
     }
 

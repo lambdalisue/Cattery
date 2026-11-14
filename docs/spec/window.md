@@ -131,11 +131,10 @@ felis draws, and returns to the size the settings give: Command with `=`,
 `-` and `0` on macOS, Control-Shift with them on Linux and Windows, or the
 menu. The size is the window's own, until the settings' size changes.
 
-A window is called after the directory its shell last reported (`OSC 7`),
-with the home directory as `~`, and what the program in it last called it
-(`OSC 0` or `OSC 2`) — the directory once where that already names it —
-and "Cattery" until either is told, behind the settings'
-`window.title_prefix`.
+A window is called by the name of the directory its shell last reported
+(`OSC 7`) alone, the home directory as `~`; until a directory is told, by
+what the program in it last called it (`OSC 0` or `OSC 2`), and "Cattery"
+until either is. The settings' `window.title_prefix` comes first.
 
 ## Closing
 
