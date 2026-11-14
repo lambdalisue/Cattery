@@ -56,6 +56,12 @@ pub fn margin(top: u32, button: u32) -> PostStageSource {
         params: vec![
             ("top".to_owned(), PostParam::Float(f64::from(top))),
             ("button".to_owned(), PostParam::Float(f64::from(button))),
+            // felis premultiplies on macOS, whose compositor blends what the
+            // surface stores.
+            (
+                "encoded_alpha".to_owned(),
+                PostParam::Bool(cfg!(target_os = "macos")),
+            ),
         ],
     }
 }
@@ -79,6 +85,10 @@ mod tests {
             [
                 ("top".to_owned(), PostParam::Float(56.0)),
                 ("button".to_owned(), PostParam::Float(92.0)),
+                (
+                    "encoded_alpha".to_owned(),
+                    PostParam::Bool(cfg!(target_os = "macos")),
+                ),
             ]
         );
     }
