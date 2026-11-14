@@ -50,6 +50,8 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         .map(|path| load_appearance_at_start(&appearance::path(path)))
         .unwrap_or_default();
     let runtime = Runtime::new()?;
+    #[cfg(target_os = "macos")]
+    crate::icon::name_outside_bundle();
     let event_loop = {
         let mut builder = EventLoop::<Event>::with_user_event();
         // Cattery's own menu takes the place of winit's.

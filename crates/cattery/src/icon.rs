@@ -80,6 +80,38 @@ pub fn show_in_dock(look: Theme) {
     let _ = look;
 }
 
+/// Have the menu bar and the Dock name the app Cattery when it runs outside
+/// its bundle, as it does as it is built, where macOS names it after its
+/// executable. Call it before the app starts, when AppKit reads the name.
+#[cfg(target_os = "macos")]
+pub fn name_outside_bundle() {
+    use objc2::runtime::AnyObject;
+    use objc2::{class, msg_send, sel};
+    use objc2_foundation::NSString;
+
+    // SAFETY: `mainBundle` and `infoDictionary` are getters that take
+    // nothing; the dictionary is written only where it answers
+    // `setObject:forKey:`, which a bundle's own, read from its Info.plist,
+    // does not.
+    unsafe {
+        let bundle: *mut AnyObject = msg_send![class!(NSBundle), mainBundle];
+        if bundle.is_null() {
+            return;
+        }
+        let info: *mut AnyObject = msg_send![bundle, infoDictionary];
+        let Some(info) = info.as_ref() else {
+            return;
+        };
+        let writable: bool = msg_send![info, respondsToSelector: sel!(setObject:forKey:)];
+        if !writable {
+            return;
+        }
+        let name = NSString::from_str("Cattery");
+        let key = NSString::from_str("CFBundleName");
+        let _: () = msg_send![info, setObject: &*name, forKey: &*key];
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
