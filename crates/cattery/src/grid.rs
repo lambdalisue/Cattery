@@ -1,7 +1,7 @@
 //! How many cells a window holds, and where they sit in it.
 
 use felis_protocol::messages::RequestedDims;
-use felis_render_wgpu::PostStageSource;
+use felis_render_wgpu::{PostParam, PostStageSource};
 
 /// The grid a window of `width` × `height` pixels holds in cells of
 /// `cell_width` × `cell_height` pixels: every row that fits, and the columns
@@ -38,8 +38,9 @@ fn cells(pixels: u32, cell: u32) -> u32 {
     pixels.checked_div(cell).unwrap_or(0).max(1)
 }
 
-/// The stage that shows the grid [`inset`], and paints the margin around
-/// it with its edge cells' colour.
+/// The stage that shows the grid [`inset`] and starting `top` pixels down,
+/// paints the margin around it with its edge cells' colour, and the `top`
+/// pixels above it with the theme's background.
 ///
 /// felis draws the grid from the window's left edge, centring it only once
 /// a whole cell is left over, and clears the margin to the theme's
@@ -47,11 +48,11 @@ fn cells(pixels: u32, cell: u32) -> u32 {
 /// felis can neither inset the grid by less than a cell nor extend the edge
 /// cells' background, so until it can, this post-process stage moves what
 /// felis drew and copies each edge cell's corner pixel out.
-pub fn margin() -> PostStageSource {
+pub fn margin(top: u32) -> PostStageSource {
     PostStageSource {
         label: "cattery margin".to_owned(),
         wgsl: include_str!("margin.wgsl").to_owned(),
-        params: Vec::new(),
+        params: vec![("top".to_owned(), PostParam::Float(f64::from(top)))],
     }
 }
 
@@ -64,7 +65,15 @@ mod tests {
 
     #[test]
     fn the_margin_stage_passes_felis_s_checks() {
-        validate_post_shader(&margin().wgsl).unwrap();
+        validate_post_shader(&margin(0).wgsl).unwrap();
+    }
+
+    #[test]
+    fn the_margin_stage_is_told_how_far_down_the_grid_starts() {
+        assert_eq!(
+            margin(56).params,
+            [("top".to_owned(), PostParam::Float(56.0))]
+        );
     }
 
     #[test]

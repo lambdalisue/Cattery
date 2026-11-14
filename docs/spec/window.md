@@ -53,7 +53,9 @@ method's candidates beside it, and reaches the session once committed.
 Resizing the window resizes the session to the cells that fit, with a sliver
 of space kept at the left and the right. The width they leave over is split
 evenly between the two sides, and what they leave below stays below; the space
-around the cells takes the colour of the cells at its edge.
+around the cells takes the colour of the cells at its edge. On macOS the
+title bar takes the theme's background, translucent and blurred as the window
+is, and the cells start below it.
 
 Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in

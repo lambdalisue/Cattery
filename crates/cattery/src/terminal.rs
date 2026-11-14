@@ -37,7 +37,7 @@ use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
 use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
-use crate::{blur, clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
+use crate::{blur, chrome, clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
 
 /// Which session a window opens on.
 #[derive(Debug, Clone, Copy)]
@@ -63,6 +63,9 @@ pub struct Terminal {
     translucent: bool,
     /// The radius the window is blurred by.
     blurred: u32,
+    /// How far down, in physical pixels, the grid is shown: below the
+    /// title bar the window is drawn under.
+    top: u32,
     renderer: Renderer,
     shadow: ShadowScreen,
     session: SessionInfo,
@@ -147,12 +150,12 @@ impl Terminal {
         // A surface is opaque or not for good once it is made.
         let translucent = drawn.theme.background_opacity.is_some();
         let window = Arc::new(
-            event_loop.create_window(
+            event_loop.create_window(chrome::under_title_bar(
                 Window::default_attributes()
                     .with_title("Cattery")
                     .with_window_icon(icon::window(look))
                     .with_transparent(translucent),
-            )?,
+            ))?,
         );
         let size = window.inner_size();
         let config = RendererConfig {
@@ -181,6 +184,7 @@ impl Terminal {
             window,
             translucent,
             blurred: 0,
+            top: 0,
             renderer,
             session,
             link: Some(link),
@@ -906,8 +910,20 @@ impl Terminal {
     /// Resize the session to the cells the window now holds.
     fn fit(&mut self, size: PhysicalSize<u32>) {
         self.renderer.resize(size.width, size.height);
+        let top = chrome::title_bar(&self.window);
+        if top != self.top {
+            self.top = top;
+            if let Err(err) = self.renderer.set_post_stages(&[grid::margin(top)]) {
+                tracing::warn!(?err, "the grid was not moved below the title bar");
+            }
+        }
         let cell = self.renderer.cell_metrics();
-        let dims = grid::dims(size.width, size.height, cell.width, cell.height);
+        let dims = grid::dims(
+            size.width,
+            size.height.saturating_sub(top),
+            cell.width,
+            cell.height,
+        );
         self.shadow.local_resize(
             u16::try_from(dims.rows).unwrap_or(u16::MAX),
             u16::try_from(dims.cols).unwrap_or(u16::MAX),
@@ -985,13 +1001,15 @@ impl Terminal {
 
     /// Where the grid's top-left corner is shown, in physical pixels.
     fn origin(&self) -> [f32; 2] {
-        let (x, y) = self.renderer.content_origin_px();
+        let (x, _) = self.renderer.content_origin_px();
         let inset = grid::inset(
             self.window.inner_size().width,
             self.renderer.cell_metrics().width,
         );
-        #[expect(clippy::cast_precision_loss, reason = "an inset is under a cell")]
-        [x + inset as f32, y]
+        // The margin stage shows the grid's top `top` pixels down, wherever
+        // felis drew it.
+        #[expect(clippy::cast_precision_loss, reason = "a few dozen pixels")]
+        [x + inset as f32, self.top as f32]
     }
 
     /// Tell the platform where the cursor is, so an input method shows
