@@ -68,6 +68,7 @@ pub fn take() -> Vec<PathBuf> {
 }
 
 /// Keep `paths` as handed.
+#[cfg(target_os = "macos")]
 fn hand(paths: impl IntoIterator<Item = PathBuf>) {
     if let Ok(mut handed) = HANDED.lock() {
         handed.extend(paths);
