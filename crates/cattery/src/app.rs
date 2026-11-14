@@ -178,6 +178,7 @@ impl App {
             start,
         )?;
         terminal.blur(self.appearance.blur);
+        terminal.set_frame(self.appearance.frame());
         self.focused = Some(terminal.id());
         self.terminals.push(terminal);
         self.list_sessions();
@@ -217,7 +218,7 @@ impl App {
                 return;
             }
             Command::Reload => {
-                self.reload();
+                self.reload(event_loop);
                 return;
             }
             Command::Help | Command::ReportIssue => {
@@ -377,7 +378,7 @@ impl App {
 
     /// Take the settings and appearance files as they now read, and redraw
     /// every window with what differs.
-    fn reload(&mut self) {
+    fn reload(&mut self, event_loop: &ActiveEventLoop) {
         let Some(path) = self.settings_path.clone() else {
             return;
         };
@@ -398,6 +399,9 @@ impl App {
             menu.rekey(&self.keymap);
         }
         self.list_sessions();
+        // A window whose frame a fixed appearance set did not hear the
+        // system change meanwhile.
+        self.system = event_loop.system_theme().or(self.system);
         self.recolor();
     }
 
@@ -411,6 +415,7 @@ impl App {
             terminal.restyle(&before, &self.drawn);
             terminal.blur(self.appearance.blur);
             terminal.set_icon(look);
+            terminal.set_frame(self.appearance.frame());
         }
         if let Some(preferences) = self.preferences.as_mut() {
             preferences.reread(&Shown {
@@ -680,7 +685,7 @@ impl ApplicationHandler<Event> for App {
             };
             match preferences.window_event(&event, &shown) {
                 Outcome::Nothing => {}
-                Outcome::Saved => self.reload(),
+                Outcome::Saved => self.reload(event_loop),
                 Outcome::Closed => self.preferences = None,
             }
             return;
@@ -690,11 +695,15 @@ impl ApplicationHandler<Event> for App {
             // A session may have started or ended while Cattery was away.
             self.list_sessions();
         }
-        if let WindowEvent::ThemeChanged(theme) = event
-            && self.system != Some(theme)
-        {
-            self.system = Some(theme);
-            self.recolor();
+        // A window whose frame a fixed appearance set reports that look, not
+        // the system's, so the system is asked; the event's look stands in
+        // where the system cannot be asked.
+        if let WindowEvent::ThemeChanged(theme) = event {
+            let system = event_loop.system_theme().or(Some(theme));
+            if self.system != system {
+                self.system = system;
+                self.recolor();
+            }
         }
         let Some(terminal) = self.terminals.iter_mut().find(|t| t.id() == id) else {
             return;
@@ -725,7 +734,7 @@ impl ApplicationHandler<Event> for App {
                     }
                 }
             }
-            Event::SettingsChanged => self.reload(),
+            Event::SettingsChanged => self.reload(event_loop),
             Event::Command(command) => self.command(event_loop, command, None),
             // The window in front already shows what its program said.
             Event::Notified(posted) => {

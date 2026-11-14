@@ -116,6 +116,16 @@ impl Appearance {
         }
     }
 
+    /// The look a window's frame — its title, its buttons — is told to take,
+    /// or none to leave it to the system's.
+    pub fn frame(&self) -> Option<Theme> {
+        match self.mode {
+            Mode::Light => Some(Theme::Light),
+            Mode::Dark => Some(Theme::Dark),
+            Mode::System => None,
+        }
+    }
+
     /// The name of the theme in force while the system's appearance is
     /// `system`.
     pub fn in_force(&self, system: Option<Theme>) -> &str {
@@ -295,6 +305,21 @@ mod tests {
             ..Appearance::default()
         };
         assert_eq!(light.look(Some(Theme::Dark)), Theme::Light);
+    }
+
+    #[test]
+    fn a_fixed_appearance_sets_the_window_s_frame_and_the_system_s_leaves_it_to_the_system() {
+        assert_eq!(Appearance::default().frame(), None);
+        let light = Appearance {
+            mode: Mode::Light,
+            ..Appearance::default()
+        };
+        assert_eq!(light.frame(), Some(Theme::Light));
+        let dark = Appearance {
+            mode: Mode::Dark,
+            ..Appearance::default()
+        };
+        assert_eq!(dark.frame(), Some(Theme::Dark));
     }
 
     #[test]

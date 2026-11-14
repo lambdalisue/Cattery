@@ -57,7 +57,9 @@ of space kept at the left and the right. The width they leave over is split
 evenly between the two sides, and what they leave below stays below; the space
 around the cells takes the colour of the cells at its edge. On macOS the
 title bar takes the theme's background, translucent and blurred as the window
-is, and the cells start below it.
+is, and the cells start below it. Its title and buttons are drawn for the
+theme in force: light on a dark theme and dark on a light one, whatever the
+system's appearance.
 
 On Linux and Windows the window has no frame of the platform's: Cattery draws
 its title bar in the theme's background, with a menu button at the left and

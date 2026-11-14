@@ -334,6 +334,11 @@ impl Terminal {
         self.window.set_window_icon(icon::window(look));
     }
 
+    /// Draw the window's frame in `frame`'s look, or the system's when none.
+    pub fn set_frame(&self, frame: Option<winit::window::Theme>) {
+        self.window.set_theme(frame);
+    }
+
     pub fn session(&self) -> u128 {
         self.session.id
     }
