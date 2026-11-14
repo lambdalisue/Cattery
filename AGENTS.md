@@ -42,8 +42,8 @@ macOS, Linux and Windows.
 | --- | --- |
 | `crates/cattery/` | the `cattery` app binary |
 | `crates/cattery/themes/` | the themes Cattery ships, with their licences |
-| `assets/logo/` | the icon, and the PNGs `scripts/icon.sh` renders from it |
-| `docs/` | concept, ADRs, specs, references |
+| `assets/logo/` | the icon, the PNGs `scripts/icon.sh` renders from it, and the logos that set the name beside it in Quicksand Bold, outlined |
+| `docs/` | concept, ADRs, specs, references, and the README's screenshots in `docs/images/` |
 | `scripts/` | helpers the release and `just ci` run |
 
 ## Language

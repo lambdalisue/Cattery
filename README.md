@@ -1,13 +1,27 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/cattery-icon-dark.svg">
-    <img src="assets/logo/cattery-icon-light.svg" alt="" width="128">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/logo/cattery-logo-vertical-dark.svg">
+    <img alt="Cattery" src="assets/logo/cattery-logo-vertical-light.svg" width="240">
   </picture>
 </p>
 
-# Cattery
+<p align="center">
+  A GUI terminal app built on the felis terminal daemon
+</p>
 
-A GUI terminal app built on the felis terminal daemon
+<p align="center">
+  <a href="#install">Install</a> ·
+  <a href="#usage">Usage</a> ·
+  <a href="https://github.com/lambdalisue/cattery/releases">Releases</a> ·
+  <a href="docs/spec/">Specs</a>
+</p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/screenshot-dark.png">
+    <img src="docs/images/screenshot-light.png" alt="A Cattery window on macOS showing two images drawn with the kitty graphics protocol above a git log" width="720">
+  </picture>
+</p>
 
 Cattery (a place that houses many cats) is a desktop app for
 [felis](https://github.com/felis-terminal/felis) sessions. felis keeps each
