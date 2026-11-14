@@ -30,7 +30,8 @@ app that owns its windows: it opens a new one from its own menu, has an app
 icon, and lets settings be changed in a Preferences window.
 
 > [!NOTE]
-> Cattery is early in development and not released yet.
+> Cattery is early in development. Its behaviour and settings may still
+> change from one release to the next.
 
 ## Install
 
