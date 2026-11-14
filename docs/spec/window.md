@@ -85,6 +85,9 @@ the session takes the mouse, when Shift is held to open it. macOS and
 Windows draw the menu as their own; on Linux it is a small window of
 Cattery's, which closes once the user turns elsewhere.
 
+On macOS, right-clicking Cattery's icon in the Dock offers a new window,
+beside the windows macOS lists there itself.
+
 On macOS, Option types the characters it composes (Option-E types é), as it
 does in other apps; with the settings' `window.macos_option_as_alt`, it acts
 as Alt (Meta) instead. A program ringing the bell in a window out of sight

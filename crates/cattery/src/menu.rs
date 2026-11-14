@@ -112,6 +112,11 @@ pub const WINDOW_MENU: &[Entry] = &[
     Entry::Item(Command::Preferences, "Preferences…"),
 ];
 
+/// What right-clicking Cattery's icon in the Dock offers. Nothing that acts
+/// on the window in front, as from the Dock which window that is is not
+/// seen, nor the palette, which is reached from any window.
+pub const DOCK_MENU: &[Entry] = &[Entry::Item(Command::NewWindow, "New Window")];
+
 /// What the menu button of the title bar Cattery draws offers: all the menu
 /// bar does on macOS.
 pub const APP_MENU: &[Entry] = &[
@@ -202,6 +207,9 @@ pub struct Menu {
     /// The keys the menu bar shows and answers.
     #[cfg(target_os = "macos")]
     keymap: Keymap,
+    /// What right-clicking the icon in the Dock offers.
+    #[cfg(target_os = "macos")]
+    _dock_menu: muda::Menu,
 }
 
 impl Menu {
@@ -218,6 +226,10 @@ impl Menu {
             let (menu, sessions) = bar(keymap)?;
             #[cfg(not(target_os = "macos"))]
             let _ = keymap;
+            #[cfg(target_os = "macos")]
+            let dock_menu = platform::menu(&lines(DOCK_MENU, &[]))?;
+            #[cfg(target_os = "macos")]
+            offer_in_dock(&dock_menu);
             Ok(Self {
                 #[cfg(target_os = "macos")]
                 _menu: menu,
@@ -226,6 +238,8 @@ impl Menu {
                 window_menu: platform::menu(&lines(WINDOW_MENU, &[]))?,
                 #[cfg(target_os = "macos")]
                 keymap: keymap.clone(),
+                #[cfg(target_os = "macos")]
+                _dock_menu: dock_menu,
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -313,6 +327,54 @@ impl Menu {
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         let _ = (window, which, sessions, at);
+    }
+}
+
+/// Have AppKit show `menu`, which outlives the app's run, when Cattery's
+/// icon in the Dock is right-clicked.
+#[cfg(target_os = "macos")]
+fn offer_in_dock(menu: &muda::Menu) {
+    use std::sync::atomic::{AtomicPtr, Ordering};
+
+    use muda::ContextMenu as _;
+    use objc2::runtime::{AnyClass, AnyObject, Imp, Sel};
+    use objc2::{class, msg_send, sel};
+
+    type DockMenu = unsafe extern "C-unwind" fn(&AnyObject, Sel, &AnyObject) -> *mut AnyObject;
+
+    static DOCK: AtomicPtr<AnyObject> = AtomicPtr::new(std::ptr::null_mut());
+
+    unsafe extern "C-unwind" fn dock_menu(_: &AnyObject, _: Sel, _: &AnyObject) -> *mut AnyObject {
+        DOCK.load(Ordering::Relaxed)
+    }
+
+    DOCK.store(menu.ns_menu().cast(), Ordering::Relaxed);
+    // AppKit asks the application's delegate for the Dock's menu. winit's
+    // delegate gives none and winit offers no way to give one, so the method
+    // is added to its class.
+    // SAFETY: AppKit's application and its delegate live as long as the app.
+    let delegate: *mut AnyObject = unsafe {
+        let app: *mut AnyObject = msg_send![class!(NSApplication), sharedApplication];
+        msg_send![app, delegate]
+    };
+    // SAFETY: a delegate AppKit hands out is a live object, or none.
+    let Some(delegate) = (unsafe { delegate.as_ref() }) else {
+        tracing::warn!("the Dock's menu was not offered: the app has no delegate");
+        return;
+    };
+    let class: *const AnyClass = delegate.class();
+    // SAFETY: `dock_menu` takes and returns what `applicationDockMenu:`
+    // does, as its type encoding says.
+    let added = unsafe {
+        objc2::ffi::class_addMethod(
+            class.cast_mut(),
+            sel!(applicationDockMenu:),
+            std::mem::transmute::<DockMenu, Imp>(dock_menu),
+            c"@@:@".as_ptr(),
+        )
+    };
+    if !added.as_bool() {
+        tracing::warn!("the Dock's menu was not offered: the delegate already gives one");
     }
 }
 
@@ -602,7 +664,7 @@ mod tests {
 
     #[test]
     fn every_item_of_a_window_s_menus_tells_its_command() {
-        for entry in WINDOW_MENU.iter().chain(APP_MENU) {
+        for entry in WINDOW_MENU.iter().chain(APP_MENU).chain(DOCK_MENU) {
             if let Entry::Item(command, label) = entry {
                 assert_eq!(super::command(&id(*command)), Some(*command), "{label}");
             }
@@ -610,8 +672,16 @@ mod tests {
     }
 
     #[test]
+    fn the_dock_offers_a_new_window() {
+        assert_eq!(
+            lines(DOCK_MENU, &[]),
+            [Line::Item(Command::NewWindow, "New Window".to_owned())]
+        );
+    }
+
+    #[test]
     fn no_menu_starts_or_ends_with_a_separator() {
-        for menu in [WINDOW_MENU, APP_MENU] {
+        for menu in [WINDOW_MENU, APP_MENU, DOCK_MENU] {
             assert_ne!(menu.first(), Some(&Entry::Separator));
             assert_ne!(menu.last(), Some(&Entry::Separator));
         }
