@@ -1,9 +1,9 @@
-//! Cattery's menu: the menu bar on macOS, and each window's on Windows.
-//!
-//! Linux has none: muda draws menus into GTK windows, and winit's windows
-//! there are not GTK's. The chords in [`crate::keys::command`] do the same
-//! on every platform.
+//! Cattery's menus: the menu bar on macOS, a window's menu where it is
+//! right-clicked, and on Linux and Windows the app's menu behind the menu
+//! button of the title bar Cattery draws. The chords in
+//! [`crate::keys::command`] do the same on every platform.
 
+use winit::dpi::PhysicalPosition;
 use winit::event_loop::EventLoopProxy;
 use winit::window::Window;
 
@@ -73,13 +73,65 @@ pub const WINDOW_MENU: &[Entry] = &[
     Entry::Item(Command::Preferences, "Preferences…"),
 ];
 
-/// The app's menu, while it is shown.
+/// What the menu button of the title bar Cattery draws offers: all the menu
+/// bar does on macOS.
+pub const APP_MENU: &[Entry] = &[
+    Entry::Item(Command::NewWindow, "New Window"),
+    Entry::Item(Command::NewWindowHere, "New Window Here"),
+    Entry::Item(Command::Palette, "Command Palette…"),
+    Entry::Separator,
+    Entry::Item(Command::Copy, "Copy"),
+    Entry::Item(Command::Paste, "Paste"),
+    Entry::Item(Command::Find, "Find…"),
+    Entry::Separator,
+    Entry::Item(Command::Zoom(Zoom::In), "Bigger"),
+    Entry::Item(Command::Zoom(Zoom::Out), "Smaller"),
+    Entry::Item(Command::Zoom(Zoom::Reset), "Default Size"),
+    Entry::Separator,
+    Entry::Item(Command::Prompt(PromptJump::Previous), "Previous Prompt"),
+    Entry::Item(Command::Prompt(PromptJump::Next), "Next Prompt"),
+    Entry::Separator,
+    Entry::Item(Command::Preferences, "Preferences…"),
+    Entry::Item(Command::Reload, "Reload Configuration"),
+    Entry::Item(Command::RestartDaemon, "Restart Daemon…"),
+    Entry::Separator,
+    Entry::Item(Command::Help, "Cattery Help"),
+    Entry::Item(Command::ReportIssue, "Report an Issue…"),
+    Entry::Item(Command::About, "About Cattery"),
+    Entry::Separator,
+    Entry::Item(Command::CloseWindow, "Close Window"),
+    Entry::Item(Command::CloseAllWindows, "Close All Windows"),
+    Entry::Item(Command::Quit, "Quit"),
+];
+
+/// Which of a window's menus to show.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Which {
+    /// What right-clicking the window offers.
+    Window,
+    /// What the title bar's menu button offers.
+    App,
+}
+
+impl Which {
+    pub const fn entries(self) -> &'static [Entry] {
+        match self {
+            Self::Window => WINDOW_MENU,
+            Self::App => APP_MENU,
+        }
+    }
+}
+
+/// The app's menus, while they are shown.
 pub struct Menu {
-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     _menu: muda::Menu,
     /// What right-clicking a window offers, as the platform draws a menu.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     window_menu: muda::Menu,
+    /// What the title bar's menu button offers.
+    #[cfg(target_os = "windows")]
+    app_menu: muda::Menu,
 }
 
 impl Menu {
@@ -103,11 +155,12 @@ impl Menu {
                 help.set_as_help_menu_for_nsapp();
                 menu
             };
-            #[cfg(target_os = "windows")]
-            let menu = platform::build()?;
             Ok(Self {
+                #[cfg(target_os = "macos")]
                 _menu: menu,
                 window_menu: platform::entries(WINDOW_MENU)?,
+                #[cfg(target_os = "windows")]
+                app_menu: platform::entries(APP_MENU)?,
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
@@ -117,31 +170,22 @@ impl Menu {
         }
     }
 
-    /// Give `window` the menu, where windows carry their own.
-    pub fn attach(&self, window: &Window) {
-        #[cfg(target_os = "windows")]
-        {
-            use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
-            if let Ok(handle) = window.window_handle()
-                && let RawWindowHandle::Win32(handle) = handle.as_raw()
-            {
-                // SAFETY: winit's window is alive while it is being handed.
-                if let Err(err) = unsafe { self._menu.init_for_hwnd(handle.hwnd.get()) } {
-                    tracing::warn!(?err, "the window's menu was not shown");
-                }
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        let _ = window;
-    }
-
-    /// Show what right-clicking `window` offers, at the pointer, until an
-    /// item is chosen or the menu is dismissed.
-    pub fn pop_up(&self, window: &Window) {
+    /// Show the menu `which` of `window`, at `at` in the window or else at
+    /// the pointer, until an item is chosen or the menu is dismissed.
+    pub fn pop_up(&self, window: &Window, which: Which, at: Option<PhysicalPosition<f64>>) {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             use muda::ContextMenu as _;
             use winit::raw_window_handle::{HasWindowHandle, RawWindowHandle};
+            let menu = match which {
+                Which::Window => &self.window_menu,
+                // Only Windows has a title bar of Cattery's, with the button.
+                #[cfg(target_os = "windows")]
+                Which::App => &self.app_menu,
+                #[cfg(target_os = "macos")]
+                Which::App => return,
+            };
+            let at = at.map(|at| muda::dpi::PhysicalPosition::new(at.x, at.y).into());
             let Ok(handle) = window.window_handle() else {
                 return;
             };
@@ -149,33 +193,28 @@ impl Menu {
                 // SAFETY: the view is winit's, alive while `window` is.
                 #[cfg(target_os = "macos")]
                 RawWindowHandle::AppKit(handle) => unsafe {
-                    self.window_menu
-                        .show_context_menu_for_nsview(handle.ns_view.as_ptr(), None);
+                    menu.show_context_menu_for_nsview(handle.ns_view.as_ptr(), at);
                 },
                 // SAFETY: the window is winit's, alive while `window` is.
                 #[cfg(target_os = "windows")]
                 RawWindowHandle::Win32(handle) => unsafe {
-                    self.window_menu
-                        .show_context_menu_for_hwnd(handle.hwnd.get(), None);
+                    menu.show_context_menu_for_hwnd(handle.hwnd.get(), at);
                 },
                 _ => {}
             }
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-        let _ = window;
+        let _ = (window, which, at);
     }
 }
 
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod platform {
     use muda::accelerator::{Accelerator, Code, Modifiers};
-    use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+    use muda::{Menu, MenuItem, PredefinedMenuItem};
 
     use super::{Entry, id};
-    use felis_protocol::messages::PromptJump;
-
     use crate::keys::Command;
-    use crate::settings::Zoom;
 
     fn item(command: Command, label: &str, chord: Option<(Modifiers, Code)>) -> MenuItem {
         let chord = chord.map(|(mods, code)| Accelerator::new(mods, code));
@@ -195,7 +234,12 @@ mod platform {
     }
 
     #[cfg(target_os = "macos")]
-    pub fn build() -> muda::Result<(Menu, Submenu, Submenu)> {
+    pub fn build() -> muda::Result<(Menu, muda::Submenu, muda::Submenu)> {
+        use felis_protocol::messages::PromptJump;
+        use muda::Submenu;
+
+        use crate::settings::Zoom;
+
         let cmd = Modifiers::META;
         let app = Submenu::with_items(
             "Cattery",
@@ -311,101 +355,6 @@ mod platform {
         let menu = Menu::with_items(&[&app, &shell, &edit, &view, &window, &help])?;
         Ok((menu, window, help))
     }
-
-    #[cfg(target_os = "windows")]
-    pub fn build() -> muda::Result<Menu> {
-        let ctrl_shift = Modifiers::CONTROL | Modifiers::SHIFT;
-        let file = Submenu::with_items(
-            "&File",
-            true,
-            &[
-                &item(
-                    Command::NewWindow,
-                    "&New Window",
-                    Some((ctrl_shift, Code::KeyN)),
-                ),
-                &item(
-                    Command::NewWindowHere,
-                    "New Window &Here",
-                    Some((ctrl_shift | Modifiers::ALT, Code::KeyN)),
-                ),
-                &item(
-                    Command::Palette,
-                    "Command &Palette…",
-                    Some((ctrl_shift, Code::KeyP)),
-                ),
-                &PredefinedMenuItem::separator(),
-                &item(
-                    Command::Preferences,
-                    "&Preferences…",
-                    Some((Modifiers::CONTROL, Code::Comma)),
-                ),
-                &item(Command::Reload, "&Reload Configuration", None),
-                &item(Command::RestartDaemon, "Restart &Daemon…", None),
-                &PredefinedMenuItem::separator(),
-                &item(
-                    Command::CloseWindow,
-                    "&Close Window",
-                    Some((ctrl_shift, Code::KeyW)),
-                ),
-                &item(Command::CloseAllWindows, "Close &All Windows", None),
-                &item(Command::Quit, "E&xit", None),
-            ],
-        )?;
-        let edit = Submenu::with_items(
-            "&Edit",
-            true,
-            &[
-                &item(Command::Copy, "&Copy", Some((ctrl_shift, Code::KeyC))),
-                &item(Command::Paste, "&Paste", Some((ctrl_shift, Code::KeyV))),
-                &PredefinedMenuItem::separator(),
-                &item(Command::Find, "&Find…", Some((ctrl_shift, Code::KeyF))),
-            ],
-        )?;
-        let view = Submenu::with_items(
-            "&View",
-            true,
-            &[
-                &item(
-                    Command::Zoom(Zoom::In),
-                    "&Bigger",
-                    Some((ctrl_shift, Code::Equal)),
-                ),
-                &item(
-                    Command::Zoom(Zoom::Out),
-                    "&Smaller",
-                    Some((ctrl_shift, Code::Minus)),
-                ),
-                &item(
-                    Command::Zoom(Zoom::Reset),
-                    "&Default Size",
-                    Some((ctrl_shift, Code::Digit0)),
-                ),
-                &PredefinedMenuItem::separator(),
-                &item(
-                    Command::Prompt(PromptJump::Previous),
-                    "&Previous Prompt",
-                    Some((ctrl_shift, Code::KeyZ)),
-                ),
-                &item(
-                    Command::Prompt(PromptJump::Next),
-                    "&Next Prompt",
-                    Some((ctrl_shift, Code::KeyX)),
-                ),
-            ],
-        )?;
-        let help = Submenu::with_items(
-            "&Help",
-            true,
-            &[
-                &item(Command::Help, "Cattery &Help", None),
-                &item(Command::ReportIssue, "&Report an Issue…", None),
-                &PredefinedMenuItem::separator(),
-                &item(Command::About, "&About Cattery", None),
-            ],
-        )?;
-        Menu::with_items(&[&file, &edit, &view, &help])
-    }
 }
 
 #[cfg(test)]
@@ -442,8 +391,8 @@ mod tests {
     }
 
     #[test]
-    fn every_item_of_the_window_s_menu_tells_its_command() {
-        for entry in WINDOW_MENU {
+    fn every_item_of_a_window_s_menus_tells_its_command() {
+        for entry in WINDOW_MENU.iter().chain(APP_MENU) {
             if let Entry::Item(command, label) = entry {
                 assert_eq!(super::command(id(*command)), Some(*command), "{label}");
             }
@@ -451,9 +400,11 @@ mod tests {
     }
 
     #[test]
-    fn the_window_s_menu_neither_starts_nor_ends_with_a_separator() {
-        assert_ne!(WINDOW_MENU.first(), Some(&Entry::Separator));
-        assert_ne!(WINDOW_MENU.last(), Some(&Entry::Separator));
+    fn no_menu_starts_or_ends_with_a_separator() {
+        for menu in [WINDOW_MENU, APP_MENU] {
+            assert_ne!(menu.first(), Some(&Entry::Separator));
+            assert_ne!(menu.last(), Some(&Entry::Separator));
+        }
     }
 
     #[test]

@@ -32,12 +32,12 @@ where Control-letter belongs to the terminal, Control-Shift-N and
 Control-Alt-Shift-N do.
 
 The menu offers the same, with About Cattery, Preferences and Close
-Window: the menu bar on macOS, and each window's menu on Windows. Linux
-has no menu; the chords work there as everywhere. The menu also closes
-every window at once (Close All Windows, leaving their sessions running),
-reads the settings again (Reload Configuration, for an edit the watch on
-the files missed), and opens Cattery's documentation and its issue tracker
-from Help. On macOS the Window menu lists the open windows.
+Window: the menu bar on macOS, and on Linux and Windows the menu behind the
+menu button of the window's title bar. The menu also closes every window at
+once (Close All Windows, leaving their sessions running), reads the settings
+again (Reload Configuration, for an edit the watch on the files missed), and
+opens Cattery's documentation and its issue tracker. On macOS the Window menu
+lists the open windows.
 
 Restart Daemon… stops Cattery's daemon, once the user confirms, and starts
 it anew from the running Cattery: every session ends, with the programs in
@@ -57,11 +57,19 @@ around the cells takes the colour of the cells at its edge. On macOS the
 title bar takes the theme's background, translucent and blurred as the window
 is, and the cells start below it.
 
+On Linux and Windows the window has no frame of the platform's: Cattery draws
+its title bar in the theme's background, with a menu button at the left and
+the minimize, maximize and close buttons at the right, and no title. The menu
+button opens a menu of all the menu bar holds on macOS, which takes the menu
+bar's place on Windows. The rest of the title bar moves the window, and a
+double click on it maximizes the window or puts it back; the window's edges
+resize it.
+
 Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it.
 
-Find (Command-F on macOS, Control-Shift-F on Linux and Windows, or the Edit
+Find (Command-F on macOS, Control-Shift-F on Linux and Windows, or the
 menu) searches the session's history: the query is typed into a bar at the
 bottom and sent with Return, and the matches are marked, the newest shown
 first; Return or `n` shows the next older, `N` the next newer, and Escape —
@@ -89,7 +97,7 @@ Images programs draw with the kitty graphics protocol are shown where they
 place them, as felis draws them.
 
 A shell that marks its prompts (OSC 133) can be stepped through them:
-Previous Prompt and Next Prompt in the View menu, Command-Up and
+Previous Prompt and Next Prompt in the menu, Command-Up and
 Command-Down on macOS, Control-Shift-Z and Control-Shift-X on Linux and
 Windows, bring the prompt before or after into view. zsh started in a window
 is set up to mark its prompts and report its directory, and zsh and fish
@@ -111,7 +119,7 @@ page keys with Shift). Typing returns the view to the live screen.
 
 Dragging selects text — a word with two clicks, a line with three, a
 rectangle with Alt held — and Copy puts it on the clipboard (Command-C on
-macOS, Control-Shift-C on Linux and Windows, or the Edit menu). Paste
+macOS, Control-Shift-C on Linux and Windows, or the menu). Paste
 (Command-V, Control-Shift-V) sends the clipboard's text, as does dropping a
 file its path; text that would run commands in a program not taking it as
 a paste — a line break without bracketed paste — waits for `y` first. A
@@ -121,7 +129,7 @@ the settings' `clipboard.osc_52` is `system`.
 A window's text grows and shrinks a pixel at a time, within the sizes
 felis draws, and returns to the size the settings give: Command with `=`,
 `-` and `0` on macOS, Control-Shift with them on Linux and Windows, or the
-View menu. The size is the window's own, until the settings' size changes.
+menu. The size is the window's own, until the settings' size changes.
 
 A window is called after the directory its shell last reported (`OSC 7`),
 with the home directory as `~`, and what the program in it last called it
@@ -140,7 +148,7 @@ window in front. Cattery ends with its last window.
 ## Sessions
 
 The command palette (Command-P on macOS, Control-Shift-P on Linux and
-Windows, or Command Palette… in the File menu) opens over the window in
+Windows, or Command Palette… in the menu) opens over the window in
 front. It lists the sessions Cattery's daemon keeps, newest first, and then
 Cattery's commands with their shortcuts. Each session says where it is,
 what runs in it, and when it was last used; the one chosen is described

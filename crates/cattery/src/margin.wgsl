@@ -13,6 +13,24 @@
 struct FelisPostUniforms {
     resolution_px: vec2<f32>,
     cell_size_px: vec2<f32>,
+    time_s: f32,
+    time_delta_s: f32,
+    frame: u32,
+    contract_version: u32,
+    cursor_rect: vec4<f32>,
+    prev_cursor_rect: vec4<f32>,
+    cursor_color: vec4<f32>,
+    trail_color: vec4<f32>,
+    trail_corners_x: vec4<f32>,
+    trail_corners_y: vec4<f32>,
+    cursor_change_time_s: f32,
+    cursor_style: u32,
+    cursor_visible: u32,
+    focused: u32,
+    mouse_pos: vec4<f32>,
+    mouse_buttons: vec4<f32>,
+    background: vec4<f32>,
+    foreground: vec4<f32>,
 }
 
 @group(0) @binding(0) var<uniform> u: FelisPostUniforms;
@@ -21,6 +39,10 @@ struct FelisPostUniforms {
 // Where the grid starts, in pixels from the window's top: below a title bar
 // the window's content is drawn under.
 override top: f32 = 0.0;
+
+// The width of each button of the title bar Cattery draws, mirroring
+// `chrome::Bar`; `0` where the platform draws the title bar.
+override button: f32 = 0.0;
 
 fn cells(pixels: f32, cell: f32) -> f32 {
     if cell <= 0.0 {
@@ -64,7 +86,8 @@ fn fs_post(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
         // The grid leaves at least `top` pixels unfilled in what felis drew,
         // some of them at its foot, which felis clears to the theme's
         // background.
-        return textureLoad(backbuffer, vec2<i32>(0, i32(window.y) - 1), 0);
+        let background = textureLoad(backbuffer, vec2<i32>(0, i32(window.y) - 1), 0);
+        return bar(pixel + 0.5, window, background);
     }
     let nearest = clamp(pixel, first, last);
     if all(nearest == pixel) {
@@ -75,4 +98,85 @@ fn fs_post(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
     // its corner, and a glyph's pixel stretched across the margin shows.
     let corner = max(start + floor((nearest - start) / cell) * cell, first);
     return textureLoad(backbuffer, vec2<i32>(max(corner - shift, vec2<f32>(0.0))), 0);
+}
+
+// Which of the title bar's buttons is at `at`, mirroring `chrome::Bar::part`:
+// 0 the menu, 1 minimize, 2 maximize, 3 close; -1 for none.
+fn part(at: vec2<f32>, window: vec2<f32>) -> i32 {
+    if button <= 0.0 || at.y < 0.0 || at.y >= top || at.x < 0.0 || at.x >= window.x {
+        return -1;
+    }
+    let from_right = window.x - at.x;
+    if at.x < button {
+        return 0;
+    } else if from_right <= button {
+        return 3;
+    } else if from_right <= 2.0 * button {
+        return 2;
+    } else if from_right <= 3.0 * button {
+        return 1;
+    }
+    return -1;
+}
+
+fn segment(p: vec2<f32>, a: vec2<f32>, b: vec2<f32>) -> f32 {
+    let along = clamp(dot(p - a, b - a) / dot(b - a, b - a), 0.0, 1.0);
+    return length(p - a - (b - a) * along);
+}
+
+// How far `p`, from the middle of button `which`, is from its icon, `h` half
+// the icon's size.
+fn icon(which: i32, p: vec2<f32>, h: f32) -> f32 {
+    switch which {
+        case 0: {
+            let gap = h * 0.7;
+            return min(
+                segment(p, vec2<f32>(-h, -gap), vec2<f32>(h, -gap)),
+                min(
+                    segment(p, vec2<f32>(-h, 0.0), vec2<f32>(h, 0.0)),
+                    segment(p, vec2<f32>(-h, gap), vec2<f32>(h, gap)),
+                ),
+            );
+        }
+        case 1: {
+            return segment(p, vec2<f32>(-h, 0.0), vec2<f32>(h, 0.0));
+        }
+        case 2: {
+            return abs(max(abs(p.x), abs(p.y)) - h);
+        }
+        default: {
+            return min(
+                segment(p, vec2<f32>(-h, -h), vec2<f32>(h, h)),
+                segment(p, vec2<f32>(-h, h), vec2<f32>(h, -h)),
+            );
+        }
+    }
+}
+
+// The title bar at `at` over `background`: the buttons' icons in the
+// theme's foreground, and the button under the pointer marked, the close
+// button in red as Windows marks it.
+fn bar(at: vec2<f32>, window: vec2<f32>, background: vec4<f32>) -> vec4<f32> {
+    let which = part(at, window);
+    if which < 0 {
+        return background;
+    }
+    var middle = vec2<f32>(button * 0.5, top * 0.5);
+    if which > 0 {
+        middle.x = window.x - (3.5 - f32(which)) * button;
+    }
+    let scale = top / 34.0;
+    let width = max(1.0, round(scale));
+    let coverage = clamp(width * 0.5 + 0.5 - icon(which, at - middle, 5.0 * scale), 0.0, 1.0);
+    let pointer = u.mouse_pos.xy * window;
+    let hovered = part(pointer, window) == which;
+    var fill = background;
+    var ink = u.foreground;
+    if hovered && which == 3 {
+        fill = vec4<f32>(0.55, 0.026, 0.012, 1.0);
+        ink = vec4<f32>(1.0, 1.0, 1.0, 1.0);
+    } else if hovered {
+        fill = vec4<f32>(mix(background.rgb, u.foreground.rgb, 0.12), background.a);
+    }
+    return mix(fill, vec4<f32>(ink.rgb, max(fill.a, ink.a)), coverage);
 }

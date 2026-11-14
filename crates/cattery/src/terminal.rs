@@ -22,16 +22,17 @@ use felis_protocol::messages::{
 use felis_render_core::overlay::{ConfirmOverlay, SearchOverlay};
 use felis_render_core::palette::Theme;
 use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
-use felis_render_wgpu::{Renderer, RendererConfig, SurfaceError};
+use felis_render_wgpu::{MouseState, Renderer, RendererConfig, SurfaceError};
 use tokio::runtime::Runtime;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoopProxy};
 use winit::keyboard::{Key as WinitKey, ModifiersState, NamedKey, PhysicalKey};
-use winit::window::{CursorIcon, UserAttentionType, Window, WindowId};
+use winit::window::{CursorIcon, ResizeDirection, UserAttentionType, Window, WindowId};
 
 use crate::about::{self, Target};
 use crate::app::Event;
+use crate::chrome::Part;
 use crate::keys::{self, Command, Stroke};
 use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
@@ -55,6 +56,8 @@ pub enum Asked {
     Command(Command),
     /// The window's menu, at the pointer.
     Menu,
+    /// The app.s menu, below the title bar.s menu button.
+    AppMenu,
 }
 
 pub struct Terminal {
@@ -66,6 +69,14 @@ pub struct Terminal {
     /// How far down, in physical pixels, the grid is shown: below the
     /// title bar the window is drawn under.
     top: u32,
+    /// The title bar Cattery draws, where it draws one.
+    bar: Option<chrome::Bar>,
+    /// When the title bar was last pressed to move the window, for a second
+    /// press to maximize it.
+    bar_pressed: Option<Instant>,
+    /// Where the title bar is held, until the pointer moves off it far
+    /// enough to move the window.
+    bar_held: Option<PhysicalPosition<f64>>,
     renderer: Renderer,
     shadow: ShadowScreen,
     session: SessionInfo,
@@ -185,6 +196,9 @@ impl Terminal {
             translucent,
             blurred: 0,
             top: 0,
+            bar: None,
+            bar_pressed: None,
+            bar_held: None,
             renderer,
             session,
             link: Some(link),
@@ -228,14 +242,24 @@ impl Terminal {
         &self.window
     }
 
-    /// Where the pointer is on the screen, where the platform tells where
-    /// the window is; Wayland does not.
+    /// Where the app's menu opens in the window: below the title bar's
+    /// menu button.
+    pub fn below_menu_button(&self) -> PhysicalPosition<f64> {
+        PhysicalPosition::new(0.0, f64::from(self.top))
+    }
+
+    /// Where the pointer is in the window, while it is over it.
+    pub fn pointer(&self) -> Option<PhysicalPosition<f64>> {
+        self.pointer
+    }
+
+    /// Where `at` in the window is on the screen, where the platform tells
+    /// where the window is; Wayland does not.
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    pub fn pointer_on_screen(&self) -> Option<PhysicalPosition<i32>> {
-        let pointer = self.pointer?;
+    pub fn on_screen(&self, at: PhysicalPosition<f64>) -> Option<PhysicalPosition<i32>> {
         let window = self.window.inner_position().ok()?;
         #[expect(clippy::cast_possible_truncation, reason = "a pixel on a screen")]
-        let (x, y) = (pointer.x.round() as i32, pointer.y.round() as i32);
+        let (x, y) = (at.x.round() as i32, at.y.round() as i32);
         Some(PhysicalPosition::new(window.x + x, window.y + y))
     }
 
@@ -289,7 +313,13 @@ impl Terminal {
             }
             WindowEvent::Ime(ime) => self.compose(&ime),
             WindowEvent::CursorMoved { position, .. } => self.point(position),
-            WindowEvent::CursorLeft { .. } => self.pointer = None,
+            WindowEvent::CursorLeft { .. } => {
+                self.pointer = None;
+                self.tell_pointer(None);
+                if self.bar.is_some() {
+                    self.redraw();
+                }
+            }
             WindowEvent::MouseInput { state, button, .. } => return self.press(state, button),
             WindowEvent::MouseWheel { delta, .. } => self.turn_wheel(delta, self.lines),
             WindowEvent::DroppedFile(path) => self.paste(&select::dropped(&path)),
@@ -758,6 +788,9 @@ impl Terminal {
         let reporting = self.shadow.mouse_protocol_active();
         match state {
             ElementState::Pressed => {
+                if let Some(asked) = self.press_frame(button) {
+                    return asked;
+                }
                 if button == MouseButton::Left && self.open_link() {
                     return Asked::Nothing;
                 }
@@ -777,6 +810,9 @@ impl Terminal {
             // A release follows its press: to the program if it was told of
             // the press, whatever has changed since.
             ElementState::Released => {
+                if button == MouseButton::Left {
+                    self.bar_held = None;
+                }
                 if let Some(at) = self.grabbed.iter().position(|held| *held == button) {
                     self.grabbed.remove(at);
                     self.report(Some(button), MouseAction::Release);
@@ -786,6 +822,82 @@ impl Terminal {
             }
         }
         Asked::Nothing
+    }
+
+    /// Take a press of `button` on the frame Cattery draws: its edges, which
+    /// resize the window, and its title bar. `None` for a press elsewhere.
+    fn press_frame(&mut self, button: MouseButton) -> Option<Asked> {
+        let bar = self.bar?;
+        let position = self.pointer?;
+        if let Some(direction) = self.resizes_from(position) {
+            if button == MouseButton::Left
+                && let Err(err) = self.window.drag_resize_window(direction)
+            {
+                tracing::warn!(?err, "the window was not resized");
+            }
+            return Some(Asked::Nothing);
+        }
+        let part = bar.part(position.x, position.y, self.window.inner_size().width)?;
+        if button != MouseButton::Left {
+            return Some(Asked::Nothing);
+        }
+        Some(match part {
+            Part::Menu => Asked::AppMenu,
+            Part::Minimize => {
+                self.window.set_minimized(true);
+                Asked::Nothing
+            }
+            Part::Maximize => {
+                self.window.set_maximized(!self.window.is_maximized());
+                Asked::Nothing
+            }
+            Part::Close => Asked::Command(Command::CloseWindow),
+            Part::Drag => {
+                let now = Instant::now();
+                if self
+                    .bar_pressed
+                    .is_some_and(|at| now.duration_since(at) <= select::CLICK_INTERVAL)
+                {
+                    self.bar_pressed = None;
+                    self.window.set_maximized(!self.window.is_maximized());
+                } else {
+                    // The window moves once the pointer does: a window
+                    // manager that takes the pointer to move the window
+                    // would take a second click with it.
+                    self.bar_pressed = Some(now);
+                    self.bar_held = Some(position);
+                }
+                Asked::Nothing
+            }
+        })
+    }
+
+    /// The edge the window is resized from at `position`, while Cattery
+    /// draws its frame and the window is neither maximized nor full screen.
+    fn resizes_from(&self, position: PhysicalPosition<f64>) -> Option<ResizeDirection> {
+        if self.bar.is_none() || self.window.is_maximized() {
+            return None;
+        }
+        let size = self.window.inner_size();
+        let border = 6.0 * self.window.scale_factor();
+        chrome::edge(position.x, position.y, (size.width, size.height), border)
+    }
+
+    /// Tell felis where the pointer is, for the title bar to mark the button
+    /// under it.
+    fn tell_pointer(&mut self, position: Option<PhysicalPosition<f64>>) {
+        let size = self.window.inner_size();
+        #[expect(clippy::cast_possible_truncation, reason = "a fraction of a window")]
+        let pos_uv = position.map_or([-1.0, -1.0], |at| {
+            [
+                (at.x / f64::from(size.width.max(1))) as f32,
+                (at.y / f64::from(size.height.max(1))) as f32,
+            ]
+        });
+        self.renderer.set_mouse_state(MouseState {
+            pos_uv,
+            ..MouseState::default()
+        });
     }
 
     /// Select from the cell under the pointer: from there for one click, the
@@ -824,6 +936,29 @@ impl Terminal {
     }
 
     fn point(&mut self, position: PhysicalPosition<f64>) {
+        self.tell_pointer(Some(position));
+        if let Some(held) = self.bar_held
+            && (position.x - held.x).hypot(position.y - held.y) > 4.0 * self.window.scale_factor()
+        {
+            self.bar_held = None;
+            if let Err(err) = self.window.drag_window() {
+                tracing::warn!(?err, "the window was not moved");
+            }
+        }
+        if let Some(bar) = self.bar {
+            let size = self.window.inner_size();
+            let edge = self
+                .resizes_from(position)
+                .map(CursorIcon::from)
+                .unwrap_or_default();
+            self.window.set_cursor(edge);
+            if bar.part(position.x, position.y, size.width).is_some() {
+                // The bar's buttons are marked under the pointer as it moves.
+                self.pointer = Some(position);
+                self.redraw();
+                return;
+            }
+        }
         let before = self.pointed().map(|(cell, _)| cell);
         self.pointer = Some(position);
         let after = self.pointed().map(|(cell, _)| cell);
@@ -910,10 +1045,11 @@ impl Terminal {
     /// Resize the session to the cells the window now holds.
     fn fit(&mut self, size: PhysicalSize<u32>) {
         self.renderer.resize(size.width, size.height);
-        let top = chrome::title_bar(&self.window);
-        if top != self.top {
-            self.top = top;
-            if let Err(err) = self.renderer.set_post_stages(&[grid::margin(top)]) {
+        let (top, bar) = (chrome::title_bar(&self.window), chrome::bar(&self.window));
+        if (top, bar) != (self.top, self.bar) {
+            (self.top, self.bar) = (top, bar);
+            let button = bar.map_or(0, |bar| bar.button);
+            if let Err(err) = self.renderer.set_post_stages(&[grid::margin(top, button)]) {
                 tracing::warn!(?err, "the grid was not moved below the title bar");
             }
         }

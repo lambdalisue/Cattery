@@ -8,7 +8,8 @@ use felis_protocol::limits::MAX_PASTE_BYTES;
 use felis_protocol::messages::InputMsg;
 
 /// How soon a click follows the last for the two to make a double click.
-const CLICK_INTERVAL: Duration = Duration::from_millis(500);
+/// How soon a click follows the last to count as one of the same row.
+pub const CLICK_INTERVAL: Duration = Duration::from_millis(500);
 
 /// The clicks in a row on one cell: one selects from there, two a word,
 /// three a line, and a fourth starts over.

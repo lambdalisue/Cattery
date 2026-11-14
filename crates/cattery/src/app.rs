@@ -16,7 +16,7 @@ use crate::about;
 use crate::appearance::{self, Appearance};
 use crate::clipboard;
 use crate::keys::Command;
-use crate::menu::Menu;
+use crate::menu::{Menu, Which};
 use crate::palette::{Asked as PaletteAsked, Palette};
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 use crate::popup::{Asked as PopupAsked, Popup};
@@ -147,9 +147,6 @@ impl App {
             start,
         )?;
         terminal.blur(self.appearance.blur);
-        if let Some(menu) = self.menu.as_ref() {
-            menu.attach(terminal.window());
-        }
         self.focused = Some(terminal.id());
         self.terminals.push(terminal);
         self.list_sessions();
@@ -376,22 +373,29 @@ impl App {
         }
     }
 
-    /// Show the menu of the window `id` at the pointer.
-    fn pop_up(&mut self, event_loop: &ActiveEventLoop, id: WindowId) {
+    /// Show the menu `which` of the window `id`: the window's at the
+    /// pointer, the app's below the title bar's menu button.
+    fn pop_up(&mut self, event_loop: &ActiveEventLoop, id: WindowId, which: Which) {
         let Some(terminal) = self.terminals.iter().find(|t| t.id() == id) else {
             return;
+        };
+        let at = match which {
+            Which::Window => None,
+            Which::App => Some(terminal.below_menu_button()),
         };
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             let _ = event_loop;
             if let Some(menu) = self.menu.as_ref() {
-                menu.pop_up(terminal.window());
+                menu.pop_up(terminal.window(), which, at);
             }
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let at = terminal.pointer_on_screen();
-            match Popup::open(event_loop, &self.runtime, crate::menu::WINDOW_MENU, at) {
+            let on_screen = at
+                .or_else(|| terminal.pointer())
+                .and_then(|at| terminal.on_screen(at));
+            match Popup::open(event_loop, &self.runtime, which.entries(), on_screen) {
                 Ok(popup) => self.popup = Some((popup, id)),
                 Err(err) => tracing::warn!(?err, "the window's menu did not open"),
             }
@@ -583,7 +587,8 @@ impl ApplicationHandler<Event> for App {
         match terminal.window_event(event) {
             Asked::Nothing => {}
             Asked::Command(command) => self.command(event_loop, command, Some(id)),
-            Asked::Menu => self.pop_up(event_loop, id),
+            Asked::Menu => self.pop_up(event_loop, id, Which::Window),
+            Asked::AppMenu => self.pop_up(event_loop, id, Which::App),
         }
     }
 

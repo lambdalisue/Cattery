@@ -40,7 +40,8 @@ fn cells(pixels: u32, cell: u32) -> u32 {
 
 /// The stage that shows the grid [`inset`] and starting `top` pixels down,
 /// paints the margin around it with its edge cells' colour, and the `top`
-/// pixels above it with the theme's background.
+/// pixels above it with the theme's background, with the buttons of a title
+/// bar Cattery draws in it where `button`, their width, is not `0`.
 ///
 /// felis draws the grid from the window's left edge, centring it only once
 /// a whole cell is left over, and clears the margin to the theme's
@@ -48,11 +49,14 @@ fn cells(pixels: u32, cell: u32) -> u32 {
 /// felis can neither inset the grid by less than a cell nor extend the edge
 /// cells' background, so until it can, this post-process stage moves what
 /// felis drew and copies each edge cell's corner pixel out.
-pub fn margin(top: u32) -> PostStageSource {
+pub fn margin(top: u32, button: u32) -> PostStageSource {
     PostStageSource {
         label: "cattery margin".to_owned(),
         wgsl: include_str!("margin.wgsl").to_owned(),
-        params: vec![("top".to_owned(), PostParam::Float(f64::from(top)))],
+        params: vec![
+            ("top".to_owned(), PostParam::Float(f64::from(top))),
+            ("button".to_owned(), PostParam::Float(f64::from(button))),
+        ],
     }
 }
 
@@ -65,14 +69,17 @@ mod tests {
 
     #[test]
     fn the_margin_stage_passes_felis_s_checks() {
-        validate_post_shader(&margin(0).wgsl).unwrap();
+        validate_post_shader(&margin(0, 0).wgsl).unwrap();
     }
 
     #[test]
-    fn the_margin_stage_is_told_how_far_down_the_grid_starts() {
+    fn the_margin_stage_is_told_where_the_grid_starts_and_how_wide_buttons_are() {
         assert_eq!(
-            margin(56).params,
-            [("top".to_owned(), PostParam::Float(56.0))]
+            margin(56, 92).params,
+            [
+                ("top".to_owned(), PostParam::Float(56.0)),
+                ("button".to_owned(), PostParam::Float(92.0)),
+            ]
         );
     }
 

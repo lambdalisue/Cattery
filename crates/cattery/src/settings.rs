@@ -76,7 +76,7 @@ pub fn look(settings: &EffectiveConfig) -> RendererConfig {
         font_bold_italic: face(&font.bold_italic),
         // macOS blends text in sRGB already.
         text_alpha_correction: !cfg!(target_os = "macos"),
-        post_stages: vec![crate::grid::margin(0)],
+        post_stages: vec![crate::grid::margin(0, 0)],
         ..RendererConfig::default()
     }
 }
@@ -305,7 +305,7 @@ mod tests {
                 .iter()
                 .map(|stage| stage.label.as_str())
                 .collect::<Vec<_>>(),
-            [crate::grid::margin(0).label.as_str()]
+            [crate::grid::margin(0, 0).label.as_str()]
         );
     }
 
