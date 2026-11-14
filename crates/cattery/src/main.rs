@@ -1,13 +1,17 @@
-use cattery::{app, daemon, settings, socket};
+use cattery::{app, daemon, place, settings, socket};
 use std::path::PathBuf;
 
+use anyhow::anyhow;
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
 /// A GUI terminal app built on the felis terminal daemon.
 #[derive(Debug, Parser)]
-#[command(version)]
+#[command(version, args_conflicts_with_subcommands = true)]
 struct Cli {
+    /// Open the first window in this folder, or in the one holding this
+    /// file.
+    folder: Option<PathBuf>,
     #[command(subcommand)]
     command: Option<Command>,
 }
@@ -23,11 +27,19 @@ enum Command {
 }
 
 fn main() -> anyhow::Result<()> {
-    match Cli::parse().command {
+    let cli = Cli::parse();
+    match cli.command {
         Some(Command::Daemon { socket }) => {
             tokio::runtime::Runtime::new()?.block_on(daemon::serve(&socket))
         }
         None => {
+            let folder = match cli.folder {
+                Some(given) => Some(
+                    place::opened(&given)
+                        .ok_or_else(|| anyhow!("{}: no such file or folder", given.display()))?,
+                ),
+                None => None,
+            };
             #[cfg(windows)]
             leave_own_console();
             tracing_subscriber::fmt()
@@ -37,6 +49,7 @@ fn main() -> anyhow::Result<()> {
             app::run(
                 socket::resolve(std::env::var_os(socket::OVERRIDE_VAR))?,
                 settings::path(std::env::var_os(settings::OVERRIDE_VAR)),
+                folder,
             )
         }
     }
@@ -82,5 +95,17 @@ mod tests {
             }
             other => panic!("not the daemon: {other:?}"),
         }
+    }
+
+    #[test]
+    fn a_folder_given_is_where_the_first_window_opens() {
+        let cli = Cli::try_parse_from(["cattery", "src/notes"]).unwrap();
+        assert_eq!(cli.folder, Some(PathBuf::from("src/notes")));
+        assert!(cli.command.is_none());
+    }
+
+    #[test]
+    fn nothing_given_opens_where_cattery_was_started() {
+        assert_eq!(Cli::try_parse_from(["cattery"]).unwrap().folder, None);
     }
 }

@@ -70,6 +70,11 @@ A window opens on your login shell. Closing it leaves the session running
 in Cattery's daemon; the command palette (Command-P, or Control-Shift-P on
 Linux and Windows) lists them, to open one in a window again or to end it.
 
+`cattery ~/src/project` opens the first window in that folder. On macOS a
+folder dropped on Cattery's icon in the Dock, or opened with Cattery from
+Finder (`open -a Cattery ~/src/project` does the same), opens in a window
+of its own.
+
 The File menu opens more: **New Window** (Command-N) in your home
 directory, **New Window Here** (Command-Shift-N) where the shell in front
 last reported being. On Linux and Windows the chords are Control-Shift-N

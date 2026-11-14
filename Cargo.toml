@@ -35,7 +35,7 @@ png = "0.18.1"
 rfd = "0.18.0"
 objc2 = "0.6.5"
 objc2-app-kit = { version = "0.3.2", default-features = false, features = ["std", "NSApplication", "NSImage", "NSResponder"] }
-objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange", "NSData", "NSBundle", "NSError", "NSGeometry"] }
+objc2-foundation = { version = "0.3.2", default-features = false, features = ["std", "NSString", "NSAttributedString", "NSRange", "NSData", "NSBundle", "NSError", "NSGeometry", "NSArray", "NSURL"] }
 objc2-user-notifications = { version = "0.3.2", default-features = false, features = ["std", "bitflags", "block2", "UNNotificationContent", "UNNotificationRequest", "UNNotificationTrigger", "UNUserNotificationCenter"] }
 block2 = "0.6.2"
 notify-rust = { version = "4.19.0", default-features = false, features = ["z-with-tokio"] }

@@ -6,7 +6,15 @@ What a Cattery window is and what happens to the session it shows.
 
 Starting Cattery opens one window showing a new session, which runs the
 user's login shell in the directory Cattery was started from, with
-Cattery's environment. On Windows no console window opens beside it
+Cattery's environment. `cattery DIR` starts it in DIR instead, or in the
+folder holding DIR where DIR is a file; a DIR that is not there is refused.
+
+On macOS a folder can be opened in Cattery as a document: dropped on its
+icon in the Dock, opened with it from Finder, or named to `open -a Cattery`.
+Each opens a window whose session starts in that folder. A folder Cattery
+is started to open takes the place of the first window.
+
+On Windows no console window opens beside it
 when it is started from Explorer or the Start menu, while `cattery --version`
 still prints to the terminal it is typed in.
 

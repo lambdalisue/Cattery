@@ -23,7 +23,7 @@ use crate::palette::{Asked as PaletteAsked, Palette};
 use crate::popup::{Asked as PopupAsked, Popup};
 use crate::preferences::{Outcome, Page, Preferences, Shown};
 use crate::terminal::{Asked, Start, Terminal};
-use crate::{notify, place, roster, session, settings, themes};
+use crate::{notify, opened, place, roster, session, settings, themes};
 
 /// What reaches the app from outside winit.
 #[derive(Debug)]
@@ -38,12 +38,19 @@ pub enum Event {
     Notified(notify::Posted),
     /// Cattery's icon in the Dock was clicked.
     Reopen,
+    /// macOS handed Cattery something to open, which [`opened::take`] gives.
+    Opened,
 }
 
 /// Open a window on a new session of the daemon at `socket`, drawn and
-/// started as the settings file at `settings_path` says, and run until
-/// quit, or elsewhere than on macOS until the last window closes.
-pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()> {
+/// started as the settings file at `settings_path` says, in `folder` or
+/// else where Cattery was, and run until quit, or elsewhere than on macOS
+/// until the last window closes.
+pub fn run(
+    socket: PathBuf,
+    settings_path: Option<PathBuf>,
+    folder: Option<PathBuf>,
+) -> anyhow::Result<()> {
     if let Some(project) = crate::folders::project() {
         crate::folders::rename_old(project.config_dir());
         crate::folders::rename_old(project.cache_dir());
@@ -70,6 +77,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         winit::platform::macos::EventLoopBuilderExtMacOS::with_default_menu(&mut builder, false);
         builder.build()?
     };
+    opened::listen(event_loop.create_proxy());
     if let Some(path) = settings_path.as_deref() {
         for watched in [
             path.to_path_buf(),
@@ -103,6 +111,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         listed_at: None,
         preferences: None,
         started: false,
+        folder,
         failure: None,
     };
     event_loop.run_app(&mut app)?;
@@ -126,6 +135,15 @@ fn load_keys(path: &std::path::Path) -> Keymap {
         tracing::warn!(key = %problem.key, reason = %problem.reason, ?path, "a key was not bound");
     }
     keymap
+}
+
+/// Where to open the folders and files handed to Cattery since last asked;
+/// what is no longer there is left out.
+fn handed_folders() -> Vec<PathBuf> {
+    opened::take()
+        .iter()
+        .filter_map(|path| place::opened(path))
+        .collect()
 }
 
 /// An appearance file that does not read leaves the default appearance.
@@ -168,6 +186,9 @@ struct App {
     preferences: Option<Preferences>,
     /// Whether the first window was opened.
     started: bool,
+    /// Where the first window opens, unless macOS hands Cattery folders to
+    /// open; where Cattery was when none.
+    folder: Option<PathBuf>,
     failure: Option<anyhow::Error>,
 }
 
@@ -667,9 +688,20 @@ impl ApplicationHandler<Event> for App {
             Ok(menu) => self.menu = Some(menu),
             Err(err) => tracing::warn!(?err, "the menu was not shown"),
         }
-        if let Err(err) = self.open(event_loop, Start::New(None)) {
-            self.failure = Some(err);
-            event_loop.exit();
+        // Launched to open folders, Cattery opens them in place of the first
+        // window rather than beside it.
+        let handed = handed_folders();
+        let folders: Vec<Option<PathBuf>> = if handed.is_empty() {
+            vec![self.folder.clone()]
+        } else {
+            handed.into_iter().map(Some).collect()
+        };
+        for folder in folders {
+            if let Err(err) = self.open(event_loop, Start::New(folder.as_deref())) {
+                self.failure = Some(err);
+                event_loop.exit();
+                return;
+            }
         }
         let (socket, proxy) = (self.socket.clone(), self.proxy.clone());
         self.runtime.spawn(async move {
@@ -769,6 +801,16 @@ impl ApplicationHandler<Event> for App {
                     self.command(event_loop, Command::NewWindow, None);
                 }
             }
+            // Folders handed before the first window are opened in its
+            // place, once the app starts.
+            Event::Opened if self.started => {
+                for folder in handed_folders() {
+                    if let Err(err) = self.open(event_loop, Start::New(Some(&folder))) {
+                        tracing::warn!(?err, ?folder, "the folder was not opened");
+                    }
+                }
+            }
+            Event::Opened => {}
             // The window in front already shows what its program said.
             Event::Notified(posted) => {
                 if !self
