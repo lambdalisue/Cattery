@@ -69,3 +69,40 @@ are read; the rest of Ghostty's keys colour what felis has no setting for.
 A theme of no such name, or one that does not read, leaves felis's colours.
 
 A colour the settings file sets is drawn in place of the theme's.
+
+## Keys
+
+The keys that run Cattery's commands are bound in `keys.toml`, in the
+directory of the settings file, over the keys Cattery binds of itself. Each
+line binds one key to one command, or takes the key's binding away:
+
+```toml
+"Mod+t" = "window.new"
+"Ctrl+Alt+p" = "palette.open"
+"Mod+p" = "none"
+```
+
+A key is written as modifiers and a key joined by `+`. The modifiers are
+`Cmd` (Super off macOS), `Ctrl`, `Alt`, `Shift`, and `Mod`, which is `Cmd`
+on macOS and `Ctrl+Shift` on Linux and Windows, where Control with a letter
+is the terminal's. The key is a character, a named key — `Enter`, `Escape`,
+`Tab`, `Backspace`, `Delete`, `Insert`, `Home`, `End`, `PageUp`,
+`PageDown`, `ArrowUp`, `ArrowDown`, `ArrowLeft`, `ArrowRight`, `F1` to
+`F12` — or `Space` or `Plus`. A capital letter holds Shift. Any other
+character is the one the layout types, Shift included: on a US layout
+Shift with `]` is written `}`, and matches with or without Shift held
+unless `Shift` is written.
+
+The commands are `app.about`, `app.preferences`, `app.reload`,
+`app.restart_daemon`, `app.help`, `app.report_issue`, `app.quit`,
+`window.new`, `window.new_here`, `window.close`, `window.close_all`,
+`session.next`, `session.previous`, `session.end`, `palette.open`,
+`search.find`, `edit.copy`, `edit.paste`, `view.zoom_in`, `view.zoom_out`,
+`view.zoom_reset`, `prompt.previous` and `prompt.next`; `none` takes the key
+away. A key bound in the file runs its command in place of what Cattery
+binds to it, and the menus and the palette show it.
+
+A line that does not read — an unknown modifier, key or command — is left
+out and logged, and the rest of the file is taken; a file that does not read
+as TOML leaves Cattery's own keys. Saving the file applies it to every open
+window. felis's `[keymap]` is not read.

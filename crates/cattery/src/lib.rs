@@ -18,6 +18,7 @@ pub mod grid;
 pub mod icon;
 pub mod inserted;
 pub mod integration;
+pub mod keymap;
 pub mod keys;
 pub mod links;
 pub mod look;

@@ -1,0 +1,29 @@
+# The keys Cattery binds on Linux and Windows before a user's keys.toml.
+# Control with a letter belongs to the terminal, so Cattery's keys add Shift.
+
+"Ctrl+," = "app.preferences"
+
+"Ctrl+Shift+n" = "window.new"
+"Ctrl+Alt+Shift+n" = "window.new_here"
+"Ctrl+Shift+w" = "window.close"
+
+"Ctrl+Alt+Shift+w" = "session.end"
+"Ctrl+Shift+PageDown" = "session.next"
+"Ctrl+Shift+PageUp" = "session.previous"
+
+"Ctrl+Shift+p" = "palette.open"
+"Ctrl+Shift+f" = "search.find"
+"Ctrl+Shift+c" = "edit.copy"
+"Ctrl+Shift+v" = "edit.paste"
+
+# The zoom keys are spelled with Shift on some layouts and without it on
+# others (US + is Shift-=), so both are bound.
+"Ctrl+Shift+=" = "view.zoom_in"
+"Ctrl+Shift+Plus" = "view.zoom_in"
+"Ctrl+Shift+-" = "view.zoom_out"
+"Ctrl+Shift+_" = "view.zoom_out"
+"Ctrl+Shift+0" = "view.zoom_reset"
+"Ctrl+Shift+)" = "view.zoom_reset"
+
+"Ctrl+Shift+z" = "prompt.previous"
+"Ctrl+Shift+x" = "prompt.next"

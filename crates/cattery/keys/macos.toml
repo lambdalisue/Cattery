@@ -1,0 +1,35 @@
+# The keys Cattery binds on macOS before a user's keys.toml.
+
+"Cmd+," = "app.preferences"
+# Shift-, types < on a US layout.
+"Cmd+<" = "app.reload"
+"Cmd+q" = "app.quit"
+
+"Cmd+n" = "window.new"
+"Cmd+Shift+n" = "window.new_here"
+"Cmd+w" = "window.close"
+"Cmd+Alt+w" = "window.close_all"
+
+"Cmd+Shift+w" = "session.end"
+# Shift-] types } on some layouts and ] on others.
+"Cmd+}" = "session.next"
+"Cmd+]" = "session.next"
+"Cmd+{" = "session.previous"
+"Cmd+[" = "session.previous"
+
+"Cmd+p" = "palette.open"
+"Cmd+f" = "search.find"
+"Cmd+c" = "edit.copy"
+"Cmd+v" = "edit.paste"
+
+# The zoom keys are spelled with Shift on some layouts and without it on
+# others (US + is Shift-=), so both are bound.
+"Cmd+=" = "view.zoom_in"
+"Cmd+Plus" = "view.zoom_in"
+"Cmd+-" = "view.zoom_out"
+"Cmd+_" = "view.zoom_out"
+"Cmd+0" = "view.zoom_reset"
+"Cmd+)" = "view.zoom_reset"
+
+"Cmd+ArrowUp" = "prompt.previous"
+"Cmd+ArrowDown" = "prompt.next"

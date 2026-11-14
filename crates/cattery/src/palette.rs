@@ -17,6 +17,7 @@ use winit::window::{Window, WindowId, WindowLevel};
 
 use crate::commands;
 use crate::fuzzy::{self, Query};
+use crate::keymap::Keymap;
 use crate::keys::Command;
 use crate::look::Tokens;
 use crate::roster::{self, Outcome, Row, State};
@@ -56,7 +57,7 @@ struct Entry<'a> {
     /// The line under the title.
     detail: String,
     /// What is shown at the right: a command's chord.
-    hint: Option<&'static str>,
+    hint: Option<String>,
     /// The characters of the title the query matched.
     marks: Vec<usize>,
     row: Option<&'a Row>,
@@ -142,7 +143,7 @@ impl Palette {
         }
     }
 
-    pub fn window_event(&mut self, event: &WindowEvent) -> Asked {
+    pub fn window_event(&mut self, event: &WindowEvent, keymap: &Keymap) -> Asked {
         match event {
             WindowEvent::CloseRequested => return Asked::Closed,
             WindowEvent::Focused(true) => self.focused = true,
@@ -157,7 +158,7 @@ impl Palette {
         let (rows, query, chosen) = (&self.rows, &mut self.query, &mut self.chosen);
         let mut asked = Asked::Nothing;
         self.surface
-            .frame(|ui| asked = palette(ui, rows, query, chosen));
+            .frame(|ui| asked = palette(ui, rows, query, chosen, keymap));
         asked
     }
 }
@@ -230,7 +231,7 @@ fn entries<'a>(rows: &'a [Row], query: &str, now: SystemTime) -> (Vec<Entry<'a>>
             choice: Choice::Command(command),
             title: commands::label(command).to_owned(),
             detail: String::new(),
-            hint: commands::chord(command),
+            hint: None,
             marks: found.marks,
             row: None,
         }
@@ -362,10 +363,21 @@ fn moved(chosen: usize, by: isize, count: usize) -> usize {
     usize::try_from((chosen + by).rem_euclid(count)).unwrap_or(0)
 }
 
-fn palette(ui: &mut Ui, rows: &[Row], query: &mut String, chosen: &mut usize) -> Asked {
+fn palette(
+    ui: &mut Ui,
+    rows: &[Row],
+    query: &mut String,
+    chosen: &mut usize,
+    keymap: &Keymap,
+) -> Asked {
     let tokens = Tokens::of(ui.visuals().dark_mode);
     let now = SystemTime::now();
-    let (sessions, commands) = entries(rows, query, now);
+    let (sessions, mut commands) = entries(rows, query, now);
+    for entry in &mut commands {
+        if let Choice::Command(command) = entry.choice {
+            entry.hint = keymap.chord(command).map(|chord| chord.to_string());
+        }
+    }
     let count = sessions.len() + commands.len();
     *chosen = (*chosen).min(count.saturating_sub(1));
     let end_chord = if cfg!(target_os = "macos") {
@@ -529,7 +541,7 @@ fn side(ui: &mut Ui, tokens: Tokens, entry: Option<&Entry<'_>>, now: SystemTime)
             ui.label(RichText::new(value).size(12.0).color(tokens.text));
             ui.add_space(4.0);
         }
-    } else if let Some(chord) = entry.hint {
+    } else if let Some(chord) = entry.hint.as_deref() {
         ui.label(RichText::new("Shortcut").size(11.0).color(tokens.muted));
         ui.label(RichText::new(chord).size(12.0).color(tokens.text));
     }
@@ -552,7 +564,7 @@ fn item(ui: &mut Ui, tokens: Tokens, chosen: bool, entry: &Entry<'_>) -> egui::R
         (tokens.text, tokens.muted, tokens.accent)
     };
     let left = rect.left() + 10.0;
-    let hint = entry.hint.map(|hint| {
+    let hint = entry.hint.as_deref().map(|hint| {
         ui.painter()
             .layout_no_wrap(hint.to_owned(), FontId::proportional(12.0), muted)
     });

@@ -10,6 +10,7 @@ use winit::window::Window;
 use felis_protocol::messages::PromptJump;
 
 use crate::app::Event;
+use crate::keymap::Keymap;
 use crate::keys::Command;
 use crate::settings::Zoom;
 
@@ -198,11 +199,14 @@ pub struct Menu {
     /// What right-clicking a window offers, as the platform draws a menu.
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     window_menu: muda::Menu,
+    /// The keys the menu bar shows and answers.
+    #[cfg(target_os = "macos")]
+    keymap: Keymap,
 }
 
 impl Menu {
     /// Show the menu, sending what is chosen in it to `proxy`.
-    pub fn install(proxy: EventLoopProxy<Event>) -> anyhow::Result<Self> {
+    pub fn install(proxy: EventLoopProxy<Event>, keymap: &Keymap) -> anyhow::Result<Self> {
         #[cfg(any(target_os = "macos", target_os = "windows"))]
         {
             muda::MenuEvent::set_event_handler(Some(move |event: muda::MenuEvent| {
@@ -211,35 +215,48 @@ impl Menu {
                 }
             }));
             #[cfg(target_os = "macos")]
-            let (menu, sessions) = {
-                let (menu, sessions, window, help) = platform::build()?;
-                menu.init_for_nsapp();
-                // Only once the menu bar is the app's: before, muda finds no
-                // menu of its own to hand AppKit, and the window list and the
-                // Help search field are left out.
-                window.set_as_windows_menu_for_nsapp();
-                help.set_as_help_menu_for_nsapp();
-                (menu, sessions)
-            };
+            let (menu, sessions) = bar(keymap)?;
+            #[cfg(not(target_os = "macos"))]
+            let _ = keymap;
             Ok(Self {
                 #[cfg(target_os = "macos")]
                 _menu: menu,
                 #[cfg(target_os = "macos")]
                 sessions,
                 window_menu: platform::menu(&lines(WINDOW_MENU, &[]))?,
+                #[cfg(target_os = "macos")]
+                keymap: keymap.clone(),
             })
         }
         #[cfg(not(any(target_os = "macos", target_os = "windows")))]
         {
-            let _ = proxy;
+            let _ = (proxy, keymap);
             Ok(Self {})
         }
+    }
+
+    /// Show and answer the keys of `keymap` in the menu bar from now on;
+    /// the sessions are to be listed again after.
+    pub fn rekey(&mut self, keymap: &Keymap) {
+        #[cfg(target_os = "macos")]
+        if *keymap != self.keymap {
+            match bar(keymap) {
+                Ok((menu, sessions)) => {
+                    self._menu = menu;
+                    self.sessions = sessions;
+                    self.keymap = keymap.clone();
+                }
+                Err(err) => tracing::warn!(?err, "the menu bar was not made anew"),
+            }
+        }
+        #[cfg(not(target_os = "macos"))]
+        let _ = keymap;
     }
 
     /// List `sessions` where the menu bar does.
     pub fn list(&self, sessions: &[Listed]) {
         #[cfg(target_os = "macos")]
-        if let Err(err) = platform::list(&self.sessions, sessions) {
+        if let Err(err) = platform::list(&self.sessions, sessions, &self.keymap) {
             tracing::warn!(?err, "the sessions were not listed in the menu bar");
         }
         #[cfg(not(target_os = "macos"))]
@@ -299,17 +316,108 @@ impl Menu {
     }
 }
 
+/// The menu bar with the keys of `keymap`, made the app's, and its
+/// Sessions menu.
+#[cfg(target_os = "macos")]
+fn bar(keymap: &Keymap) -> muda::Result<(muda::Menu, muda::Submenu)> {
+    let (menu, sessions, window, help) = platform::build(keymap)?;
+    menu.init_for_nsapp();
+    // Only once the menu bar is the app's: before, muda finds no menu of its
+    // own to hand AppKit, and the window list and the Help search field are
+    // left out.
+    window.set_as_windows_menu_for_nsapp();
+    help.set_as_help_menu_for_nsapp();
+    Ok((menu, sessions))
+}
+
 #[cfg(any(target_os = "macos", target_os = "windows"))]
 mod platform {
     use muda::accelerator::{Accelerator, Code, Modifiers};
     use muda::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 
+    use winit::keyboard::ModifiersState;
+
     use super::{Line, Listed, id};
+    use crate::keymap::{Chord, ChordKey, Keymap};
     use crate::keys::Command;
 
-    fn item(command: Command, label: &str, chord: Option<(Modifiers, Code)>) -> MenuItem {
-        let chord = chord.map(|(mods, code)| Accelerator::new(mods, code));
-        MenuItem::with_id(id(command), label, true, chord)
+    /// An item for `command`, with the key `keymap` binds it to where the
+    /// menu shows keys.
+    fn item(command: Command, label: &str, keymap: Option<&Keymap>) -> MenuItem {
+        let key = keymap
+            .and_then(|keymap| keymap.chord(command))
+            .and_then(accelerator);
+        MenuItem::with_id(id(command), label, true, key)
+    }
+
+    /// The accelerator a menu shows and answers for `chord`, where a key of
+    /// the US layout types its character.
+    fn accelerator(chord: Chord) -> Option<Accelerator> {
+        const SHIFTED: &[(char, char)] = &[
+            ('<', ','),
+            ('>', '.'),
+            ('?', '/'),
+            (':', ';'),
+            ('"', '\''),
+            ('{', '['),
+            ('}', ']'),
+            ('|', '\\'),
+            ('_', '-'),
+            ('+', '='),
+            ('~', '`'),
+            ('!', '1'),
+            ('@', '2'),
+            ('#', '3'),
+            ('$', '4'),
+            ('%', '5'),
+            ('^', '6'),
+            ('&', '7'),
+            ('*', '8'),
+            ('(', '9'),
+            (')', '0'),
+        ];
+        let mut mods = Modifiers::empty();
+        for (held, modifier) in [
+            (ModifiersState::SUPER, Modifiers::META),
+            (ModifiersState::CONTROL, Modifiers::CONTROL),
+            (ModifiersState::ALT, Modifiers::ALT),
+            (ModifiersState::SHIFT, Modifiers::SHIFT),
+        ] {
+            if chord.mods.contains(held) {
+                mods |= modifier;
+            }
+        }
+        let name = match chord.key {
+            ChordKey::Named(named) => format!("{named:?}"),
+            ChordKey::Char(' ') => "Space".to_owned(),
+            ChordKey::Char(c) => {
+                let c = match SHIFTED.iter().find(|(shifted, _)| *shifted == c) {
+                    Some((_, base)) => {
+                        mods |= Modifiers::SHIFT;
+                        *base
+                    }
+                    None => c,
+                };
+                match c {
+                    'a'..='z' => format!("Key{}", c.to_ascii_uppercase()),
+                    '0'..='9' => format!("Digit{c}"),
+                    ',' => "Comma".to_owned(),
+                    '.' => "Period".to_owned(),
+                    '/' => "Slash".to_owned(),
+                    ';' => "Semicolon".to_owned(),
+                    '\'' => "Quote".to_owned(),
+                    '[' => "BracketLeft".to_owned(),
+                    ']' => "BracketRight".to_owned(),
+                    '\\' => "Backslash".to_owned(),
+                    '-' => "Minus".to_owned(),
+                    '=' => "Equal".to_owned(),
+                    '`' => "Backquote".to_owned(),
+                    _ => return None,
+                }
+            }
+        };
+        let code: Code = name.parse().ok()?;
+        Some(Accelerator::new(mods, code))
     }
 
     /// A session's submenu: show it in the window, or end it.
@@ -339,18 +447,13 @@ mod platform {
 
     /// Fill the menu bar's Sessions menu with `listed` anew.
     #[cfg(target_os = "macos")]
-    pub fn list(menu: &Submenu, listed: &[Listed]) -> muda::Result<()> {
+    pub fn list(menu: &Submenu, listed: &[Listed], keymap: &Keymap) -> muda::Result<()> {
         while menu.remove_at(0).is_some() {}
-        let cmd = Modifiers::META | Modifiers::SHIFT;
-        menu.append(&item(
-            Command::NextSession,
-            "Next Session",
-            Some((cmd, Code::BracketRight)),
-        ))?;
+        menu.append(&item(Command::NextSession, "Next Session", Some(keymap)))?;
         menu.append(&item(
             Command::PreviousSession,
             "Previous Session",
-            Some((cmd, Code::BracketLeft)),
+            Some(keymap),
         ))?;
         menu.append(&PredefinedMenuItem::separator())?;
         for listed in listed {
@@ -359,34 +462,24 @@ mod platform {
         if !listed.is_empty() {
             menu.append(&PredefinedMenuItem::separator())?;
         }
-        menu.append(&item(Command::EndSession, "End Session", None))?;
+        menu.append(&item(Command::EndSession, "End Session", Some(keymap)))?;
         Ok(())
     }
 
     #[cfg(target_os = "macos")]
-    pub fn build() -> muda::Result<(Menu, Submenu, Submenu, Submenu)> {
+    pub fn build(keymap: &Keymap) -> muda::Result<(Menu, Submenu, Submenu, Submenu)> {
         use felis_protocol::messages::PromptJump;
 
         use crate::settings::Zoom;
-
-        let cmd = Modifiers::META;
         let app = Submenu::with_items(
             "Cattery",
             true,
             &[
-                &item(Command::About, "About Cattery", None),
+                &item(Command::About, "About Cattery", Some(keymap)),
                 &PredefinedMenuItem::separator(),
-                &item(
-                    Command::Preferences,
-                    "Preferences…",
-                    Some((cmd, Code::Comma)),
-                ),
-                &item(
-                    Command::Reload,
-                    "Reload Configuration",
-                    Some((cmd | Modifiers::SHIFT, Code::Comma)),
-                ),
-                &item(Command::RestartDaemon, "Restart Daemon…", None),
+                &item(Command::Preferences, "Preferences…", Some(keymap)),
+                &item(Command::Reload, "Reload Configuration", Some(keymap)),
+                &item(Command::RestartDaemon, "Restart Daemon…", Some(keymap)),
                 &PredefinedMenuItem::separator(),
                 &PredefinedMenuItem::services(None),
                 &PredefinedMenuItem::separator(),
@@ -394,82 +487,58 @@ mod platform {
                 &PredefinedMenuItem::hide_others(None),
                 &PredefinedMenuItem::show_all(None),
                 &PredefinedMenuItem::separator(),
-                &item(Command::Quit, "Quit Cattery", Some((cmd, Code::KeyQ))),
+                &item(Command::Quit, "Quit Cattery", Some(keymap)),
             ],
         )?;
         let shell = Submenu::with_items(
             "File",
             true,
             &[
-                &item(Command::NewWindow, "New Window", Some((cmd, Code::KeyN))),
-                &item(
-                    Command::NewWindowHere,
-                    "New Window Here",
-                    Some((cmd | Modifiers::SHIFT, Code::KeyN)),
-                ),
-                &item(
-                    Command::Palette,
-                    "Command Palette…",
-                    Some((cmd, Code::KeyP)),
-                ),
+                &item(Command::NewWindow, "New Window", Some(keymap)),
+                &item(Command::NewWindowHere, "New Window Here", Some(keymap)),
+                &item(Command::Palette, "Command Palette…", Some(keymap)),
                 &PredefinedMenuItem::separator(),
-                &item(
-                    Command::CloseWindow,
-                    "Close Window",
-                    Some((cmd, Code::KeyW)),
-                ),
+                &item(Command::CloseWindow, "Close Window", Some(keymap)),
                 &item(
                     Command::EndSession,
                     "Close Window and End Session",
-                    Some((cmd | Modifiers::SHIFT, Code::KeyW)),
+                    Some(keymap),
                 ),
-                &item(
-                    Command::CloseAllWindows,
-                    "Close All Windows",
-                    Some((cmd | Modifiers::ALT, Code::KeyW)),
-                ),
+                &item(Command::CloseAllWindows, "Close All Windows", Some(keymap)),
             ],
         )?;
         let edit = Submenu::with_items(
             "Edit",
             true,
             &[
-                &item(Command::Copy, "Copy", Some((cmd, Code::KeyC))),
-                &item(Command::Paste, "Paste", Some((cmd, Code::KeyV))),
+                &item(Command::Copy, "Copy", Some(keymap)),
+                &item(Command::Paste, "Paste", Some(keymap)),
                 &PredefinedMenuItem::separator(),
-                &item(Command::Find, "Find…", Some((cmd, Code::KeyF))),
+                &item(Command::Find, "Find…", Some(keymap)),
             ],
         )?;
         let view = Submenu::with_items(
             "View",
             true,
             &[
-                &item(Command::Zoom(Zoom::In), "Bigger", Some((cmd, Code::Equal))),
-                &item(
-                    Command::Zoom(Zoom::Out),
-                    "Smaller",
-                    Some((cmd, Code::Minus)),
-                ),
-                &item(
-                    Command::Zoom(Zoom::Reset),
-                    "Default Size",
-                    Some((cmd, Code::Digit0)),
-                ),
+                &item(Command::Zoom(Zoom::In), "Bigger", Some(keymap)),
+                &item(Command::Zoom(Zoom::Out), "Smaller", Some(keymap)),
+                &item(Command::Zoom(Zoom::Reset), "Default Size", Some(keymap)),
                 &PredefinedMenuItem::separator(),
                 &item(
                     Command::Prompt(PromptJump::Previous),
                     "Previous Prompt",
-                    Some((cmd, Code::ArrowUp)),
+                    Some(keymap),
                 ),
                 &item(
                     Command::Prompt(PromptJump::Next),
                     "Next Prompt",
-                    Some((cmd, Code::ArrowDown)),
+                    Some(keymap),
                 ),
             ],
         )?;
         let sessions = Submenu::new("Sessions", true);
-        list(&sessions, &[])?;
+        list(&sessions, &[], keymap)?;
         let window = Submenu::with_items(
             "Window",
             true,
@@ -484,8 +553,8 @@ mod platform {
             "Help",
             true,
             &[
-                &item(Command::Help, "Cattery Help", None),
-                &item(Command::ReportIssue, "Report an Issue…", None),
+                &item(Command::Help, "Cattery Help", Some(keymap)),
+                &item(Command::ReportIssue, "Report an Issue…", Some(keymap)),
             ],
         )?;
         let menu = Menu::with_items(&[&app, &shell, &edit, &view, &sessions, &window, &help])?;

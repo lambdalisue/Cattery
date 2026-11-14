@@ -15,6 +15,7 @@ use winit::window::{Theme, WindowId};
 use crate::about;
 use crate::appearance::{self, Appearance};
 use crate::clipboard;
+use crate::keymap::{self, Keymap};
 use crate::keys::Command;
 use crate::menu::{Listed, Menu, Which};
 use crate::palette::{Asked as PaletteAsked, Palette};
@@ -53,6 +54,10 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         .as_deref()
         .map(|path| load_appearance_at_start(&appearance::path(path)))
         .unwrap_or_default();
+    let keymap = settings_path
+        .as_deref()
+        .map(|path| load_keys(&keymap::path(path)))
+        .unwrap_or_default();
     let runtime = Runtime::new()?;
     #[cfg(target_os = "macos")]
     crate::icon::name_outside_bundle();
@@ -64,7 +69,11 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         builder.build()?
     };
     if let Some(path) = settings_path.as_deref() {
-        for watched in [path.to_path_buf(), appearance::path(path)] {
+        for watched in [
+            path.to_path_buf(),
+            appearance::path(path),
+            keymap::path(path),
+        ] {
             let proxy = event_loop.create_proxy();
             config_watcher::spawn(runtime.handle(), watched, move || {
                 proxy.send_event(Event::SettingsChanged).is_ok()
@@ -79,6 +88,7 @@ pub fn run(socket: PathBuf, settings_path: Option<PathBuf>) -> anyhow::Result<()
         drawn: settings.clone(),
         settings,
         appearance,
+        keymap,
         system: None,
         terminals: Vec::new(),
         focused: None,
@@ -105,6 +115,16 @@ fn load_at_start(path: &Path) -> EffectiveConfig {
     })
 }
 
+/// The keys in the file at `path`, over the defaults; what of it does not
+/// read is told and left out.
+fn load_keys(path: &std::path::Path) -> Keymap {
+    let (keymap, problems) = keymap::load(path);
+    for problem in problems {
+        tracing::warn!(key = %problem.key, reason = %problem.reason, ?path, "a key was not bound");
+    }
+    keymap
+}
+
 /// An appearance file that does not read leaves the default appearance.
 fn load_appearance_at_start(path: &Path) -> Appearance {
     appearance::load(path).unwrap_or_else(|err| {
@@ -121,6 +141,8 @@ struct App {
     /// The felis settings as the file says them.
     settings: EffectiveConfig,
     appearance: Appearance,
+    /// The keys bound to the commands.
+    keymap: Keymap,
     /// The system's appearance, where the platform tells it.
     system: Option<Theme>,
     /// The settings with the theme in force under them: what the windows
@@ -371,6 +393,11 @@ impl App {
             Ok(appearance) => self.appearance = appearance,
             Err(err) => tracing::warn!(%err, "the appearance was not read; keeping that in use"),
         }
+        self.keymap = load_keys(&keymap::path(&path));
+        if let Some(menu) = self.menu.as_mut() {
+            menu.rekey(&self.keymap);
+        }
+        self.list_sessions();
         self.recolor();
     }
 
@@ -604,7 +631,7 @@ impl ApplicationHandler<Event> for App {
         self.system = event_loop.system_theme();
         crate::icon::show_in_dock(self.appearance.look(self.system));
         self.drawn = self.colored();
-        match Menu::install(self.proxy.clone()) {
+        match Menu::install(self.proxy.clone(), &self.keymap) {
             Ok(menu) => self.menu = Some(menu),
             Err(err) => tracing::warn!(?err, "the menu was not shown"),
         }
@@ -636,7 +663,7 @@ impl ApplicationHandler<Event> for App {
             return;
         }
         if let Some(palette) = self.palette.as_mut().filter(|palette| palette.id() == id) {
-            let asked = palette.window_event(&event);
+            let asked = palette.window_event(&event, &self.keymap);
             self.palette_asked(event_loop, asked);
             return;
         }
@@ -672,7 +699,7 @@ impl ApplicationHandler<Event> for App {
         let Some(terminal) = self.terminals.iter_mut().find(|t| t.id() == id) else {
             return;
         };
-        match terminal.window_event(event) {
+        match terminal.window_event(event, &self.keymap) {
             Asked::Nothing => {}
             Asked::Command(command) => self.command(event_loop, command, Some(id)),
             Asked::Menu => self.pop_up(event_loop, id, Which::Window),

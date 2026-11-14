@@ -158,159 +158,6 @@ pub enum Command {
     EndSessionOf(u128),
 }
 
-/// The command `key` with `mods` held is the platform's chord for.
-///
-/// On macOS the chords hold Command, which a terminal program never sees.
-/// Elsewhere Control-letter is a terminal's own, so the window chords add
-/// Shift, as other terminals there do.
-pub fn command(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
-    const CHORDS: &[(&str, ModifiersState, Command)] = if cfg!(target_os = "macos") {
-        &[
-            (",", ModifiersState::SUPER, Command::Preferences),
-            ("n", ModifiersState::SUPER, Command::NewWindow),
-            (
-                "n",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::NewWindowHere,
-            ),
-            ("w", ModifiersState::SUPER, Command::CloseWindow),
-            (
-                "w",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::EndSession,
-            ),
-            (
-                "]",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::NextSession,
-            ),
-            (
-                "}",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::NextSession,
-            ),
-            (
-                "[",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::PreviousSession,
-            ),
-            (
-                "{",
-                ModifiersState::SUPER.union(ModifiersState::SHIFT),
-                Command::PreviousSession,
-            ),
-            ("p", ModifiersState::SUPER, Command::Palette),
-            ("c", ModifiersState::SUPER, Command::Copy),
-            ("f", ModifiersState::SUPER, Command::Find),
-            ("v", ModifiersState::SUPER, Command::Paste),
-        ]
-    } else {
-        &[
-            (",", ModifiersState::CONTROL, Command::Preferences),
-            (
-                "n",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::NewWindow,
-            ),
-            (
-                "n",
-                ModifiersState::CONTROL
-                    .union(ModifiersState::SHIFT)
-                    .union(ModifiersState::ALT),
-                Command::NewWindowHere,
-            ),
-            (
-                "w",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::CloseWindow,
-            ),
-            (
-                "w",
-                ModifiersState::CONTROL
-                    .union(ModifiersState::SHIFT)
-                    .union(ModifiersState::ALT),
-                Command::EndSession,
-            ),
-            (
-                "p",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Palette,
-            ),
-            (
-                "c",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Copy,
-            ),
-            (
-                "f",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Find,
-            ),
-            (
-                "v",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Paste,
-            ),
-            (
-                "z",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Prompt(PromptJump::Previous),
-            ),
-            (
-                "x",
-                ModifiersState::CONTROL.union(ModifiersState::SHIFT),
-                Command::Prompt(PromptJump::Next),
-            ),
-        ]
-    };
-    if !cfg!(target_os = "macos") && mods == ModifiersState::CONTROL.union(ModifiersState::SHIFT) {
-        match key {
-            WinitKey::Named(WinitNamedKey::PageDown) => return Some(Command::NextSession),
-            WinitKey::Named(WinitNamedKey::PageUp) => return Some(Command::PreviousSession),
-            _ => {}
-        }
-    }
-    if cfg!(target_os = "macos") && mods == ModifiersState::SUPER {
-        match key {
-            WinitKey::Named(WinitNamedKey::ArrowUp) => {
-                return Some(Command::Prompt(PromptJump::Previous));
-            }
-            WinitKey::Named(WinitNamedKey::ArrowDown) => {
-                return Some(Command::Prompt(PromptJump::Next));
-            }
-            _ => {}
-        }
-    }
-    let WinitKey::Character(typed) = key else {
-        return None;
-    };
-    // Shift turns the letter upper case.
-    let typed = typed.to_lowercase();
-    // The zoom keys are spelled with Shift on some layouts and without it
-    // on others (US `+` is Shift-`=`), so both are taken.
-    let zooms = if cfg!(target_os = "macos") {
-        [
-            ModifiersState::SUPER,
-            ModifiersState::SUPER.union(ModifiersState::SHIFT),
-        ]
-    } else {
-        [ModifiersState::CONTROL.union(ModifiersState::SHIFT); 2]
-    };
-    let zoom = match typed.as_str() {
-        "=" | "+" => Some(Zoom::In),
-        "-" | "_" => Some(Zoom::Out),
-        "0" | ")" => Some(Zoom::Reset),
-        _ => None,
-    };
-    if let Some(zoom) = zoom.filter(|_| zooms.contains(&mods)) {
-        return Some(Command::Zoom(zoom));
-    }
-    CHORDS
-        .iter()
-        .find(|(key, chord, _)| *key == typed && *chord == mods)
-        .map(|(_, _, command)| *command)
-}
-
 /// The input an input method's event sends: its committed text, if any.
 pub fn committed(ime: &Ime) -> Option<InputMsg> {
     // Committed text is final: no modifier applies to it, so it reaches
@@ -406,6 +253,11 @@ mod tests {
     const SHIFT: ModifiersState = ModifiersState::SHIFT;
     const ALT: ModifiersState = ModifiersState::ALT;
 
+    /// The command the default keys bind `key` with `mods` held to.
+    fn bound(key: &WinitKey, mods: ModifiersState) -> Option<Command> {
+        crate::keymap::Keymap::default().command(key, mods)
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn the_app_s_chords_on_macos_hold_command() {
@@ -419,11 +271,7 @@ mod tests {
             ("p", SUPER, Command::Palette),
             ("v", SUPER, Command::Paste),
         ] {
-            assert_eq!(
-                super::command(&character(key), mods),
-                Some(command),
-                "{key}"
-            );
+            assert_eq!(bound(&character(key), mods), Some(command), "{key}");
         }
     }
 
@@ -440,11 +288,7 @@ mod tests {
             ("P", CONTROL.union(SHIFT), Command::Palette),
             ("V", CONTROL.union(SHIFT), Command::Paste),
         ] {
-            assert_eq!(
-                super::command(&character(key), mods),
-                Some(command),
-                "{key}"
-            );
+            assert_eq!(bound(&character(key), mods), Some(command), "{key}");
         }
     }
 
@@ -458,11 +302,7 @@ mod tests {
             ("[", Command::PreviousSession),
             ("{", Command::PreviousSession),
         ] {
-            assert_eq!(
-                super::command(&character(key), both),
-                Some(command),
-                "{key}"
-            );
+            assert_eq!(bound(&character(key), both), Some(command), "{key}");
         }
     }
 
@@ -471,11 +311,11 @@ mod tests {
     fn control_shift_page_keys_step_through_the_sessions() {
         let both = CONTROL.union(SHIFT);
         assert_eq!(
-            super::command(&WinitKey::Named(WinitNamedKey::PageDown), both),
+            bound(&WinitKey::Named(WinitNamedKey::PageDown), both),
             Some(Command::NextSession)
         );
         assert_eq!(
-            super::command(&WinitKey::Named(WinitNamedKey::PageUp), both),
+            bound(&WinitKey::Named(WinitNamedKey::PageUp), both),
             Some(Command::PreviousSession)
         );
     }
@@ -487,10 +327,7 @@ mod tests {
         } else {
             CONTROL.union(SHIFT).union(ALT)
         };
-        assert_eq!(
-            super::command(&character("W"), mods),
-            Some(Command::EndSession)
-        );
+        assert_eq!(bound(&character("W"), mods), Some(Command::EndSession));
     }
 
     #[test]
@@ -505,14 +342,11 @@ mod tests {
             (character("Z"), character("X"), CONTROL.union(SHIFT))
         };
         assert_eq!(
-            super::command(&previous, mods),
+            bound(&previous, mods),
             Some(Command::Prompt(PromptJump::Previous))
         );
-        assert_eq!(
-            super::command(&next, mods),
-            Some(Command::Prompt(PromptJump::Next))
-        );
-        assert_eq!(super::command(&previous, ModifiersState::empty()), None);
+        assert_eq!(bound(&next, mods), Some(Command::Prompt(PromptJump::Next)));
+        assert_eq!(bound(&previous, ModifiersState::empty()), None);
     }
 
     #[test]
@@ -530,7 +364,7 @@ mod tests {
             ("0", Zoom::Reset),
         ] {
             assert_eq!(
-                command(&character(key), mods),
+                bound(&character(key), mods),
                 Some(Command::Zoom(zoom)),
                 "{key}"
             );
@@ -577,11 +411,11 @@ mod tests {
     #[test]
     fn a_key_typed_alone_or_with_control_alone_reaches_the_session() {
         for key in [",", "n", "w"] {
-            assert_eq!(command(&character(key), ModifiersState::empty()), None);
+            assert_eq!(bound(&character(key), ModifiersState::empty()), None);
         }
         if !cfg!(target_os = "macos") {
-            assert_eq!(command(&character("n"), CONTROL), None);
-            assert_eq!(command(&character("w"), CONTROL), None);
+            assert_eq!(bound(&character("n"), CONTROL), None);
+            assert_eq!(bound(&character("w"), CONTROL), None);
         }
     }
 
@@ -592,8 +426,8 @@ mod tests {
         } else {
             CONTROL
         };
-        assert_eq!(command(&character("."), mods), None);
-        assert_eq!(command(&character(","), mods.union(ALT)), None);
+        assert_eq!(bound(&character("."), mods), None);
+        assert_eq!(bound(&character(","), mods.union(ALT)), None);
     }
 
     #[test]

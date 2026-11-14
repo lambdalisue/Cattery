@@ -33,6 +33,7 @@ use winit::window::{CursorIcon, ResizeDirection, UserAttentionType, Window, Wind
 use crate::about::{self, Target};
 use crate::app::Event;
 use crate::chrome::Part;
+use crate::keymap::Keymap;
 use crate::keys::{self, Command, Stroke};
 use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
@@ -346,7 +347,7 @@ impl Terminal {
         self.shadow.cwd()
     }
 
-    pub fn window_event(&mut self, event: WindowEvent) -> Asked {
+    pub fn window_event(&mut self, event: WindowEvent, keymap: &Keymap) -> Asked {
         match event {
             WindowEvent::CloseRequested => return Asked::Command(Command::CloseWindow),
             WindowEvent::Resized(size) => self.fit(size),
@@ -366,7 +367,7 @@ impl Terminal {
                 self.hover();
             }
             WindowEvent::KeyboardInput { event, .. } => {
-                if let Some(command) = keys::command(&event.logical_key, self.modifiers) {
+                if let Some(command) = keymap.command(&event.logical_key, self.modifiers) {
                     // Both the press and the release stay out of the session.
                     return if event.state.is_pressed() && !event.repeat {
                         Asked::Command(command)

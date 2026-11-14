@@ -29,7 +29,9 @@ front:
 
 On macOS, Command-N and Command-Shift-N open them. On Linux and Windows,
 where Control-letter belongs to the terminal, Control-Shift-N and
-Control-Alt-Shift-N do.
+Control-Alt-Shift-N do. The keys this specification names are the ones
+Cattery binds of itself; each can be bound anew in `keys.toml`
+(`settings.md`).
 
 The menu offers the same, with About Cattery, Preferences and Close
 Window: the menu bar on macOS, and on Linux and Windows the menu behind the
