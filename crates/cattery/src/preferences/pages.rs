@@ -5,8 +5,8 @@
 use std::path::Path;
 
 use egui::{
-    Align, Align2, CentralPanel, Color32, ComboBox, CornerRadius, Frame, Layout, Margin, Panel,
-    Rect, RichText, ScrollArea, Sense, Slider, Stroke, TextEdit, Ui, vec2,
+    Align, Align2, CentralPanel, Color32, ComboBox, CornerRadius, DragValue, Frame, Layout, Margin,
+    Panel, Rect, RichText, ScrollArea, Sense, Slider, Stroke, TextEdit, Ui, vec2,
 };
 use felis_client_core::config::CursorBlinkMode;
 use felis_render_core::palette::{DEFAULT_FG_SRGB, PALETTE_NAMES};
@@ -681,7 +681,8 @@ fn font(content: &mut Content<'_, '_>, view: &View<'_>) {
 }
 
 /// A slider with its value after it, in a right-to-left row; whether the
-/// user moved it.
+/// user changed it. The value can be dragged, or clicked and typed, and a
+/// typed value is brought to the slider's range and step.
 fn slider(
     ui: &mut Ui,
     value: &mut f32,
@@ -689,14 +690,39 @@ fn slider(
     step: f64,
     unit: &str,
 ) -> bool {
-    let tokens = Tokens::of(ui.visuals().dark_mode);
-    ui.add_sized(
-        vec2(48.0, 18.0),
-        egui::Label::new(RichText::new(amount(*value, unit)).color(tokens.muted)),
-    );
-    ui.spacing_mut().slider_width = CONTROL_WIDTH - 56.0;
-    ui.add(Slider::new(value, range).step_by(step).show_value(false))
-        .changed()
+    let typed_in = ui
+        .add_sized(
+            vec2(56.0, 18.0),
+            DragValue::new(value)
+                .range(range.clone())
+                .speed(step)
+                .custom_formatter(|number, _| {
+                    #[expect(clippy::cast_possible_truncation, reason = "an f32 shown back")]
+                    amount(number as f32, unit)
+                })
+                .custom_parser(|text| typed(text, unit).map(f64::from)),
+        )
+        .changed();
+    if typed_in {
+        #[expect(clippy::cast_possible_truncation, reason = "a step of a setting")]
+        let step = step as f32;
+        *value = ((*value / step).round() * step).clamp(*range.start(), *range.end());
+    }
+    ui.spacing_mut().slider_width = CONTROL_WIDTH - 64.0;
+    let slid = ui
+        .add(Slider::new(value, range).step_by(step).show_value(false))
+        .changed();
+    typed_in || slid
+}
+
+/// The number `text` gives, written with or without `unit` after it.
+fn typed(text: &str, unit: &str) -> Option<f32> {
+    let text = text.trim();
+    let number = text.strip_suffix(unit).unwrap_or(text).trim();
+    number
+        .parse()
+        .ok()
+        .filter(|number: &f32| number.is_finite())
 }
 
 /// `value` with its unit, without a decimal point it does not need.
@@ -910,5 +936,19 @@ mod tests {
     #[test]
     fn half_a_pixel_is_shown() {
         assert_eq!(amount(14.5, "px"), "14.5 px");
+    }
+
+    #[test]
+    fn a_number_is_typed_with_or_without_its_unit() {
+        assert_eq!(typed("14", "px"), Some(14.0));
+        assert_eq!(typed("14.5 px", "px"), Some(14.5));
+        assert_eq!(typed(" 80% ", "%"), Some(80.0));
+    }
+
+    #[test]
+    fn what_is_not_a_number_is_not_taken() {
+        assert_eq!(typed("", "px"), None);
+        assert_eq!(typed("big", "px"), None);
+        assert_eq!(typed("14 pt", "px"), None);
     }
 }
