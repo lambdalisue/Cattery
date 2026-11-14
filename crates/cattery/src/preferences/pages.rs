@@ -451,7 +451,7 @@ fn theme(content: &mut Content<'_, '_>, view: &View<'_>) {
     content.group(Some("Window"), None, |rows| {
         rows.row(
             "Opacity",
-            Some("Turning a window translucent or opaque applies to new windows."),
+            Some("How much of the window's background is drawn."),
             |ui, changes| {
                 let mut percent = (appearance.opacity * 100.0).round();
                 if slider(ui, &mut percent, 0.0..=100.0, 1.0, "%") {

@@ -48,6 +48,19 @@ pub fn font_size(settings: &EffectiveConfig) -> f32 {
         .unwrap_or(DEFAULT_FONT_SIZE_LOGICAL_PX)
 }
 
+/// `look` as a window's renderer is made with, before the window is drawn
+/// with `look` itself.
+///
+/// felis makes a surface opaque or translucent once, by the opacity it is
+/// made with, and an opaque one draws no alpha however the opacity changes
+/// later; a translucent one draws an opaque background as well. So every
+/// window is made translucent, for its opacity to change while it is open.
+pub fn made(look: &RendererConfig) -> RendererConfig {
+    let mut made = look.clone();
+    made.theme.background_opacity = Some(look.theme.background_opacity.unwrap_or(0.99));
+    made
+}
+
 /// How a window draws with these settings. The font size is left out: it
 /// is in physical pixels, which only a window's scale factor gives.
 pub fn look(settings: &EffectiveConfig) -> RendererConfig {
@@ -321,6 +334,14 @@ mod tests {
             }
             other => panic!("not the colors: {other:?}"),
         }
+    }
+
+    #[test]
+    fn every_window_is_made_able_to_turn_translucent() {
+        let opaque = made(&look(&settings("")));
+        assert!(opaque.theme.background_opacity.is_some_and(|a| a < 1.0));
+        let translucent = made(&look(&settings("[window]\nopacity = 0.8\n")));
+        assert_eq!(translucent.theme.background_opacity, Some(0.8));
     }
 
     #[test]

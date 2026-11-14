@@ -62,7 +62,7 @@ pub enum Asked {
 
 pub struct Terminal {
     window: Arc<Window>,
-    /// Fixed when the window is made, as its surface's alpha mode is.
+    /// Whether the window is drawn translucent now.
     translucent: bool,
     /// The radius the window is blurred by.
     blurred: u32,
@@ -158,29 +158,29 @@ impl Terminal {
             anyhow::Ok((session, link, minor))
         })?;
         let drawn = settings::look(settings);
-        // A surface is opaque or not for good once it is made.
         let translucent = drawn.theme.background_opacity.is_some();
         let window = Arc::new(
             event_loop.create_window(chrome::under_title_bar(
                 Window::default_attributes()
                     .with_title("Cattery")
                     .with_window_icon(icon::window(look))
-                    .with_transparent(translucent),
+                    .with_transparent(true),
             ))?,
         );
         let size = window.inner_size();
         let config = RendererConfig {
             font_size_physical_px: Some(physical(&window, settings::font_size(settings))),
-            ..drawn
+            ..settings::made(&drawn)
         };
         let colors = settings::reported_colors(&config);
-        let renderer = runtime.block_on(Renderer::new_with_config(
+        let mut renderer = runtime.block_on(Renderer::new_with_config(
             Arc::clone(&window),
             size.width,
             size.height,
             config,
             None,
         ))?;
+        renderer.set_theme(&Theme::from_config(&drawn.theme));
         // winit hands keys to no input method until a window asks.
         window.set_ime_allowed(true);
         inserted::watch(&window);
@@ -424,6 +424,7 @@ impl Terminal {
             self.retitle();
         }
         let look = settings::look(after);
+        self.translucent = look.theme.background_opacity.is_some();
         let changes = Changes::between(
             &settings::look(before),
             &look,

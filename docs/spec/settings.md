@@ -22,11 +22,8 @@ Cattery's does not change felis's windows.
 ## Changing it
 
 Saving the file, or the appearance file below, applies the change to every
-open window, without a restart, with these exceptions:
-
-- The shell a session runs applies to the sessions started after the change.
-- A window is opaque or translucent from when it opens: a change of opacity
-  across fully opaque applies to windows opened after it.
+open window, without a restart, except the shell a session runs, which applies
+to the sessions started after the change.
 
 A file felis's reader refuses changes nothing: the settings in use stay, and
 the reason is logged. At start, such a file leaves every setting at its
