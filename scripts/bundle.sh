@@ -28,6 +28,9 @@ licenses() {
   cp "$root/THIRD-PARTY-LICENSES.txt" "$1/THIRD-PARTY-LICENSES.txt"
   cp "$root/crates/cattery/themes/README.md" "$1/themes/README.md"
   cp "$root/crates/cattery/themes/LICENSES/"* "$1/themes/LICENSES/"
+  mkdir -p "$1/fonts/LICENSES"
+  cp "$root/crates/cattery/fonts/README.md" "$1/fonts/README.md"
+  cp "$root/crates/cattery/fonts/LICENSES/"* "$1/fonts/LICENSES/"
 }
 
 # A build made in the Nix development shell refers into /nix/store, which

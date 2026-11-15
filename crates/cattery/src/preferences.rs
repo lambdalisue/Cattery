@@ -99,7 +99,7 @@ impl Preferences {
             themes_dir,
             store: Store::new(path),
             page: Page::default(),
-            families: monospace_families(),
+            families: crate::fonts::with_installed(monospace_families()),
             shell: edit::shell_line(&shown.settings.shell.command),
             problem: None,
             icon,
@@ -270,8 +270,8 @@ fn icon_texture(
     Some(context.load_texture("icon", image, egui::TextureOptions::LINEAR))
 }
 
-/// The families a grid can be drawn with, for the font list; empty when
-/// the platform cannot list them, which leaves only the default.
+/// The installed families a grid can be drawn with; empty when the
+/// platform cannot list them.
 fn monospace_families() -> Vec<String> {
     match felis_render_wgpu::installed_families() {
         Ok(families) => families

@@ -102,14 +102,17 @@
               build
               // {
                 cargoArtifacts = craneLib.buildDepsOnly build;
-                # The licences of Cattery, of the themes it ships and of the
-                # crates it is built from go with it, as they are built into it.
+                # The licences of Cattery, of the themes and the font it ships
+                # and of the crates it is built from go with it, as they are
+                # built into it.
                 postInstall = ''
                   licenses="$out/share/licenses/cattery"
                   install -Dm644 LICENSE "$licenses/LICENSE"
                   install -Dm644 THIRD-PARTY-LICENSES.txt "$licenses/THIRD-PARTY-LICENSES.txt"
                   install -Dm644 crates/cattery/themes/README.md "$licenses/themes/README.md"
                   install -Dm644 -t "$licenses/themes/LICENSES" crates/cattery/themes/LICENSES/*
+                  install -Dm644 crates/cattery/fonts/README.md "$licenses/fonts/README.md"
+                  install -Dm644 -t "$licenses/fonts/LICENSES" crates/cattery/fonts/LICENSES/*
                 ''
                 # On macOS, Cattery is an app: the Dock, Finder and Launchpad
                 # show it by its bundle's name and icon, and its windows'

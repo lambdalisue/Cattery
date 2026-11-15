@@ -670,18 +670,15 @@ fn font(content: &mut Content<'_, '_>, view: &View<'_>) {
         let current = settings.font.family.as_deref();
         rows.row(
             "Family",
-            Some("Installed fixed-width faces."),
+            Some("The face Cattery ships, or an installed fixed-width one."),
             |ui, changes| {
                 ComboBox::from_id_salt("family")
-                    .selected_text(current.unwrap_or("System default"))
+                    .selected_text(current.unwrap_or("Default"))
                     .width(CONTROL_WIDTH)
                     .height(360.0)
                     .icon(chevrons)
                     .show_ui(ui, |ui| {
-                        if ui
-                            .selectable_label(current.is_none(), "System default")
-                            .clicked()
-                        {
+                        if ui.selectable_label(current.is_none(), "Default").clicked() {
                             changes.push(Change::Setting(Edit::FontFamily(None)));
                         }
                         for family in view.families {
@@ -697,7 +694,7 @@ fn font(content: &mut Content<'_, '_>, view: &View<'_>) {
             },
             current.map(|_| {
                 (
-                    "Reset to the system default".to_owned(),
+                    "Reset to the default".to_owned(),
                     vec![Change::Setting(Edit::FontFamily(None))],
                 )
             }),

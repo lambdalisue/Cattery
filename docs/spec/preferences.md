@@ -11,8 +11,8 @@ resized and minimized, but not maximized.
 
 ## What it changes
 
-- The font: its family, from the installed families felis can draw a grid
-  with, and its size.
+- The font: its family, from the one Cattery ships and the installed
+  families felis can draw a grid with, and its size.
 - The theme: the appearance, the light and the dark theme, the window's
   opacity, and on macOS how much what shows through a translucent window is
   blurred. Colours the settings file sets over the theme are listed, and can

@@ -110,4 +110,6 @@ in [docs/adr/](docs/adr/), and the behaviour it promises in
 
 ## License
 
-MIT. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE). The themes and the font Cattery ships stay under
+their authors' licences; see [crates/cattery/themes/](crates/cattery/themes/)
+and [crates/cattery/fonts/](crates/cattery/fonts/).

@@ -13,6 +13,7 @@ pub mod commands;
 pub mod daemon;
 pub mod edit;
 pub mod folders;
+pub mod fonts;
 pub mod fuzzy;
 pub mod grid;
 pub mod icon;

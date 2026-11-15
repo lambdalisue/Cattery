@@ -13,13 +13,13 @@ repository = "https://github.com/lambdalisue/cattery"
 [workspace.dependencies]
 # felis is not on crates.io and promises no API, so every crate of it is
 # pinned to the same revision and moved together.
-felis-client-core = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-daemon = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-grid = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-protocol = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-render-core = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-render-wgpu = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
-felis-transport = { git = "https://github.com/felis-terminal/felis", rev = "bc4af67fdd138e270c9d6f5316a6e9563df561ce" }
+felis-client-core = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-daemon = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-grid = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-protocol = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-render-core = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-render-wgpu = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
+felis-transport = { git = "https://github.com/felis-terminal/felis", rev = "43d04187c82926a355cdcc1a4559c0f6953a6379" }
 
 anyhow = "1.0.104"
 arboard = { version = "3.7.0", default-features = false }
