@@ -34,6 +34,18 @@ pub fn inset(width: u32, cell_width: u32) -> u32 {
     }
 }
 
+/// How wide a window is whose [`dims`] are `cols` columns of cells
+/// `cell_width` pixels wide: the columns and the margin at either side.
+pub const fn width_for(cols: u32, cell_width: u32) -> u32 {
+    cols * cell_width + 2 * cell_width.div_ceil(10)
+}
+
+/// How tall a window is whose [`dims`] are `rows` rows of cells
+/// `cell_height` pixels tall, starting `top` pixels down.
+pub const fn height_for(rows: u32, cell_height: u32, top: u32) -> u32 {
+    rows * cell_height + top
+}
+
 fn cells(pixels: u32, cell: u32) -> u32 {
     pixels.checked_div(cell).unwrap_or(0).max(1)
 }
@@ -155,6 +167,31 @@ mod tests {
         let dims = dims(800, 600, 0, 0);
         assert_eq!((dims.rows, dims.cols), (1, 1));
         assert_eq!(inset(800, 0), 0);
+    }
+
+    #[test]
+    fn a_window_sized_for_a_grid_holds_exactly_that_grid() {
+        for cell in [[10, 20], [17, 34], [9, 19], [5, 12]] {
+            for (cols, rows) in [(1, 1), (80, 24), (120, 35), (192, 50)] {
+                for top in [0, 56] {
+                    let width = width_for(cols, cell[0]);
+                    let height = height_for(rows, cell[1], top);
+                    let dims = dims(width, height - top, cell[0], cell[1]);
+                    assert_eq!(
+                        (dims.cols, dims.rows),
+                        (cols, rows),
+                        "{cell:?} {cols}x{rows} under {top}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn a_window_sized_for_a_grid_leaves_only_the_margin_over() {
+        assert_eq!(width_for(80, 10), 802);
+        assert_eq!(width_for(80, 17), 1364);
+        assert_eq!(height_for(24, 20, 56), 536);
     }
 
     #[test]

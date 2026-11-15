@@ -17,6 +17,8 @@ resized and minimized, but not maximized.
   opacity, and on macOS how much what shows through a translucent window is
   blurred. Colours the settings file sets over the theme are listed, and can
   be given back to the theme.
+- The columns and rows a new window holds, or the platform's width and
+  height for it.
 - The cursor: its colour, and whether it blinks always, never, or as the
   program asks.
 - The command a new session runs, typed as a shell line; left empty, a

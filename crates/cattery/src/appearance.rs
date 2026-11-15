@@ -34,6 +34,9 @@ impl Mode {
 /// The largest blur radius, in points, the file sets.
 pub const MAX_BLUR: u32 = 100;
 
+/// The most columns or rows the file asks a new window for.
+pub const MAX_CELLS: u32 = 1000;
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Appearance {
     pub mode: Mode,
@@ -44,6 +47,12 @@ pub struct Appearance {
     /// The radius, in points, of the blur of what shows through a
     /// translucent window; `0` for none.
     pub blur: u32,
+    /// The columns a new window opens holding; `None` for as wide as the
+    /// platform opens it.
+    pub columns: Option<u32>,
+    /// The rows a new window opens holding; `None` for as tall as the
+    /// platform opens it.
+    pub rows: Option<u32>,
 }
 
 impl Default for Appearance {
@@ -54,6 +63,8 @@ impl Default for Appearance {
             dark_theme: "Nightfox".to_owned(),
             opacity: 1.0,
             blur: 0,
+            columns: None,
+            rows: None,
         }
     }
 }
@@ -97,6 +108,17 @@ impl Appearance {
             let blur = item.as_integer().ok_or("blur is not a whole number")?;
             appearance.blur = u32::try_from(blur.clamp(0, i64::from(MAX_BLUR))).unwrap_or(0);
         }
+        let cells = |key: &str| -> Result<Option<u32>, String> {
+            let Some(item) = doc.get(key) else {
+                return Ok(None);
+            };
+            let count = item
+                .as_integer()
+                .ok_or_else(|| format!("{key} is not a whole number"))?;
+            Ok(u32::try_from(count.clamp(1, i64::from(MAX_CELLS))).ok())
+        };
+        appearance.columns = cells("columns")?;
+        appearance.rows = cells("rows")?;
         Ok(appearance)
     }
 
@@ -146,13 +168,20 @@ impl Appearance {
             .to_string()
             .parse::<f64>()
             .unwrap_or(f64::from(self.opacity));
+        let cells = |count: Option<u32>| count.map(|count| Value::from(i64::from(count)));
         for (key, value) in [
-            ("appearance", Value::from(self.mode.word())),
-            ("light_theme", Value::from(self.light_theme.as_str())),
-            ("dark_theme", Value::from(self.dark_theme.as_str())),
-            ("opacity", Value::from(opacity)),
-            ("blur", Value::from(i64::from(self.blur))),
+            ("appearance", Some(Value::from(self.mode.word()))),
+            ("light_theme", Some(Value::from(self.light_theme.as_str()))),
+            ("dark_theme", Some(Value::from(self.dark_theme.as_str()))),
+            ("opacity", Some(Value::from(opacity))),
+            ("blur", Some(Value::from(i64::from(self.blur)))),
+            ("columns", cells(self.columns)),
+            ("rows", cells(self.rows)),
         ] {
+            let Some(value) = value else {
+                doc.remove(key);
+                continue;
+            };
             match doc.get_mut(key).and_then(toml_edit::Item::as_value_mut) {
                 // The comment after a value stays with the value.
                 Some(old) => {
@@ -243,6 +272,52 @@ mod tests {
     }
 
     #[test]
+    fn a_new_window_s_size_is_the_platform_s_by_default() {
+        let appearance = Appearance::default();
+        assert_eq!((appearance.columns, appearance.rows), (None, None));
+    }
+
+    #[test]
+    fn the_file_names_a_new_window_s_columns_and_rows() {
+        let appearance = Appearance::parse("columns = 120\nrows = 35\n").unwrap();
+        assert_eq!((appearance.columns, appearance.rows), (Some(120), Some(35)));
+    }
+
+    #[test]
+    fn either_of_a_new_window_s_columns_and_rows_can_be_named_alone() {
+        let appearance = Appearance::parse("columns = 120\n").unwrap();
+        assert_eq!((appearance.columns, appearance.rows), (Some(120), None));
+        let appearance = Appearance::parse("rows = 35\n").unwrap();
+        assert_eq!((appearance.columns, appearance.rows), (None, Some(35)));
+    }
+
+    #[test]
+    fn columns_or_rows_out_of_range_are_brought_into_it() {
+        let appearance = Appearance::parse("columns = 0\nrows = -4\n").unwrap();
+        assert_eq!((appearance.columns, appearance.rows), (Some(1), Some(1)));
+        let appearance = Appearance::parse("columns = 100000\nrows = 100000\n").unwrap();
+        assert_eq!(
+            (appearance.columns, appearance.rows),
+            (Some(MAX_CELLS), Some(MAX_CELLS))
+        );
+    }
+
+    #[test]
+    fn columns_or_rows_that_are_not_a_whole_number_are_refused() {
+        assert!(Appearance::parse("columns = 80.5\n").is_err());
+        assert!(Appearance::parse("rows = \"tall\"\n").is_err());
+    }
+
+    #[test]
+    fn a_size_left_to_the_platform_is_taken_out_of_the_file() {
+        let text = Appearance::default()
+            .written_into("columns = 120 # wide\nrows = 35\n")
+            .unwrap();
+        assert!(!text.contains("columns"), "{text}");
+        assert!(!text.contains("rows"), "{text}");
+    }
+
+    #[test]
     fn a_whole_opacity_is_a_number_too() {
         assert_eq!(Appearance::parse("opacity = 1\n").unwrap().opacity, 1.0);
     }
@@ -330,6 +405,8 @@ mod tests {
             dark_theme: "Nord".to_owned(),
             opacity: 0.85,
             blur: 12,
+            columns: Some(120),
+            rows: Some(35),
         };
         let text = appearance
             .written_into("# chosen in the Preferences window\nappearance = \"dark\" # was dark\n")

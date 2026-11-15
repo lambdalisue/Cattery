@@ -42,7 +42,7 @@ Cattery follows as it changes, or always light, or always dark. Where the
 system's appearance cannot be told, it is taken for dark.
 
 They are kept in `appearance.toml`, in the directory of the settings file,
-with how the window shows what is behind it:
+with how the window shows what is behind it and how big a new one opens:
 
 ```toml
 appearance = "system"   # "system", "light" or "dark"
@@ -50,12 +50,20 @@ light_theme = "Dawnfox"
 dark_theme = "Nightfox"
 opacity = 1.0           # how much of the background is drawn, 0.0 to 1.0
 blur = 0                # how far what shows through is blurred, in points
+columns = 120           # the columns a new window holds, 1 to 1000
+rows = 35               # the rows a new window holds, 1 to 1000
 ```
 
-A key left out has the value above. A file that does not read as this
-leaves the appearance in use, and at start the one above. An opacity or a
-blur out of range is brought to the nearest it can be. The `window.opacity`
-of the settings file is not read.
+A key left out has the value above, but for `columns` and `rows`: without
+them a new window is as wide, or as tall, as the platform opens it. A file
+that does not read as this leaves the appearance in use, and at start the
+default. An opacity, a blur, or columns or rows out of range are brought to
+the nearest they can be. The `window.opacity` of the settings file is not
+read.
+
+A new window holds the columns and rows at the text size the settings give.
+A change to them applies to the windows opened after it; the windows open
+keep their size.
 
 The blur is drawn on macOS, by the radius it gives, while the window is
 translucent. Elsewhere a blur above 0 asks the compositor to blur behind the

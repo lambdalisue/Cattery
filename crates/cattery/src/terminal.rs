@@ -1114,6 +1114,25 @@ impl Terminal {
         }
     }
 
+    /// Size the window to hold `columns` and `rows` cells at the size its
+    /// text is drawn at; an axis given none keeps its size.
+    pub fn hold(&mut self, columns: Option<u32>, rows: Option<u32>) {
+        if columns.is_none() && rows.is_none() {
+            return;
+        }
+        let cell = self.renderer.cell_metrics();
+        let top = chrome::title_bar(&self.window);
+        let now = self.window.inner_size();
+        let wanted = PhysicalSize::new(
+            columns.map_or(now.width, |cols| grid::width_for(cols, cell.width)),
+            rows.map_or(now.height, |rows| grid::height_for(rows, cell.height, top)),
+        );
+        // Where the platform resizes later, its Resized event fits the grid.
+        if let Some(size) = self.window.request_inner_size(wanted) {
+            self.fit(size);
+        }
+    }
+
     /// Resize the session to the cells the window now holds.
     fn fit(&mut self, size: PhysicalSize<u32>) {
         self.renderer.resize(size.width, size.height);

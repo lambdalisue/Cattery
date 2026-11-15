@@ -214,6 +214,7 @@ impl App {
         )?;
         terminal.blur(self.appearance.blur);
         terminal.set_frame(self.appearance.frame());
+        terminal.hold(self.appearance.columns, self.appearance.rows);
         self.focused = Some(terminal.id());
         self.terminals.push(terminal);
         self.list_sessions();

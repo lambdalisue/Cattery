@@ -28,6 +28,9 @@ when none is running, and it keeps running after the window closes. It is
 apart from any felis daemon the user runs: a felis client does not see
 Cattery's sessions, and Cattery does not see theirs.
 
+A window opens holding the columns and rows `appearance.toml` names, and
+otherwise at the platform's size (`settings.md`).
+
 Every window shows a session of its own. More windows open from the one in
 front:
 

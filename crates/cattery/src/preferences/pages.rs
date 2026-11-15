@@ -15,7 +15,7 @@ use winit::window::Theme;
 
 use super::{Change, Shown};
 use crate::about::{self, Target};
-use crate::appearance::{Appearance, MAX_BLUR, Mode};
+use crate::appearance::{Appearance, MAX_BLUR, MAX_CELLS, Mode};
 use crate::edit::{self, Color, Edit, Rgb};
 use crate::look::{self, Tokens};
 use crate::settings;
@@ -506,6 +506,48 @@ fn theme(content: &mut Content<'_, '_>, view: &View<'_>) {
                 }),
             );
         }
+        rows.row(
+            "Columns",
+            Some("How many columns a new window holds."),
+            |ui, changes| {
+                if let Some(columns) = cells(ui, appearance.columns) {
+                    changes.push(Change::Appearance(Appearance {
+                        columns,
+                        ..appearance.clone()
+                    }));
+                }
+            },
+            appearance.columns.map(|_| {
+                (
+                    "Reset to the platform's width".to_owned(),
+                    vec![Change::Appearance(Appearance {
+                        columns: None,
+                        ..appearance.clone()
+                    })],
+                )
+            }),
+        );
+        rows.row(
+            "Rows",
+            Some("How many rows a new window holds."),
+            |ui, changes| {
+                if let Some(rows) = cells(ui, appearance.rows) {
+                    changes.push(Change::Appearance(Appearance {
+                        rows,
+                        ..appearance.clone()
+                    }));
+                }
+            },
+            appearance.rows.map(|_| {
+                (
+                    "Reset to the platform's height".to_owned(),
+                    vec![Change::Appearance(Appearance {
+                        rows: None,
+                        ..appearance.clone()
+                    })],
+                )
+            }),
+        );
     });
 
     let overridden = overridden(shown);
@@ -713,6 +755,41 @@ fn slider(
         .add(Slider::new(value, range).step_by(step).show_value(false))
         .changed();
     typed_in || slid
+}
+
+/// A count of cells to drag or type, shown as the default while `current`
+/// is none; the count the user changed it to.
+fn cells(ui: &mut Ui, current: Option<u32>) -> Option<Option<u32>> {
+    // Zero stands for none: a DragValue holds a number, and no window
+    // holds no cells.
+    let mut count = current.unwrap_or(0);
+    let changed = ui
+        .add_sized(
+            vec2(96.0, 18.0),
+            DragValue::new(&mut count)
+                .range(0..=MAX_CELLS)
+                .speed(0.25)
+                .custom_formatter(|number, _| cells_shown(number))
+                .custom_parser(cells_typed),
+        )
+        .changed();
+    changed.then_some((count > 0).then_some(count))
+}
+
+fn cells_shown(number: f64) -> String {
+    if number < 1.0 {
+        "Default".to_owned()
+    } else {
+        format!("{number:.0}")
+    }
+}
+
+fn cells_typed(text: &str) -> Option<f64> {
+    let text = text.trim();
+    if text.eq_ignore_ascii_case("default") || text.is_empty() {
+        return Some(0.0);
+    }
+    text.parse::<u32>().ok().map(f64::from)
 }
 
 /// The number `text` gives, written with or without `unit` after it.
@@ -943,6 +1020,21 @@ mod tests {
         assert_eq!(typed("14", "px"), Some(14.0));
         assert_eq!(typed("14.5 px", "px"), Some(14.5));
         assert_eq!(typed(" 80% ", "%"), Some(80.0));
+    }
+
+    #[test]
+    fn a_count_of_cells_left_to_the_platform_is_shown_as_the_default() {
+        assert_eq!(cells_shown(0.0), "Default");
+        assert_eq!(cells_shown(120.0), "120");
+    }
+
+    #[test]
+    fn a_count_of_cells_is_typed_as_a_whole_number_or_as_the_default() {
+        assert_eq!(cells_typed(" 120 "), Some(120.0));
+        assert_eq!(cells_typed("default"), Some(0.0));
+        assert_eq!(cells_typed(""), Some(0.0));
+        assert_eq!(cells_typed("80.5"), None);
+        assert_eq!(cells_typed("wide"), None);
     }
 
     #[test]
