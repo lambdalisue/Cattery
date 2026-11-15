@@ -73,7 +73,7 @@ pub fn look(settings: &EffectiveConfig) -> RendererConfig {
             minimum_contrast: Some(settings.theme.clamped_minimum_contrast())
                 .filter(|ratio| *ratio > 1.0),
         },
-        font_fallbacks: font.fallback.iter().map(face).collect(),
+        font_fallbacks: fallbacks(&font.fallback),
         font_features: font.features.clone(),
         font_weight: font.weight,
         font_axes: axes(&font.axes),
@@ -85,6 +85,21 @@ pub fn look(settings: &EffectiveConfig) -> RendererConfig {
         post_stages: vec![crate::grid::margin(0, 0)],
         ..RendererConfig::default()
     }
+}
+
+/// The faces the settings name for characters the font lacks, then, on
+/// macOS, Hiragino Sans. macOS 26 falls back to PingFang for Han unless the
+/// preferred language is Japanese, and felis draws PingFang's outlines
+/// blank (felis-terminal/felis#13); Hiragino ships with every macOS and
+/// felis draws it.
+fn fallbacks(named: &[FontStyleConfig]) -> Vec<FaceSpec> {
+    const HIRAGINO: &str = "Hiragino Sans";
+    let mut faces: Vec<FaceSpec> = named.iter().map(face).collect();
+    let listed = faces.iter().any(|f| f.family.as_deref() == Some(HIRAGINO));
+    if cfg!(target_os = "macos") && !listed {
+        faces.push(FaceSpec::named(HIRAGINO));
+    }
+    faces
 }
 
 fn face(style: &FontStyleConfig) -> FaceSpec {
@@ -302,6 +317,48 @@ mod tests {
         assert_eq!(look.theme.cursor.as_deref(), Some("#00ff00"));
         assert_eq!(look.theme.palette.len(), 1);
         assert_eq!(look.font_size_physical_px, None);
+    }
+
+    fn fallback_families(look: &RendererConfig) -> Vec<&str> {
+        look.font_fallbacks
+            .iter()
+            .filter_map(|face| face.family.as_deref())
+            .collect()
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn kanji_fall_back_to_hiragino_sans_on_macos_before_the_system_s_choice() {
+        assert_eq!(fallback_families(&look(&settings(""))), ["Hiragino Sans"]);
+    }
+
+    #[test]
+    #[cfg(not(target_os = "macos"))]
+    fn elsewhere_the_system_s_fallback_alone_follows_the_settings() {
+        assert!(fallback_families(&look(&settings(""))).is_empty());
+    }
+
+    #[test]
+    fn the_fallbacks_the_settings_name_come_first_and_once() {
+        let look = look(&settings(
+            "[font]\nfallback = [{ family = \"Noto Sans CJK JP\" }, { family = \"Hiragino Sans\" }]\n",
+        ));
+        assert_eq!(
+            fallback_families(&look),
+            ["Noto Sans CJK JP", "Hiragino Sans"]
+        );
+    }
+
+    #[test]
+    #[cfg(target_os = "macos")]
+    fn hiragino_sans_follows_the_fallbacks_the_settings_name() {
+        let look = look(&settings(
+            "[font]\nfallback = [{ family = \"Noto Sans CJK JP\" }]\n",
+        ));
+        assert_eq!(
+            fallback_families(&look),
+            ["Noto Sans CJK JP", "Hiragino Sans"]
+        );
     }
 
     #[test]
