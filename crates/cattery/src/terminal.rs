@@ -22,7 +22,9 @@ use felis_protocol::messages::{
 use felis_render_core::overlay::{ConfirmOverlay, SearchOverlay};
 use felis_render_core::palette::Theme;
 use felis_render_core::{ImageData, ImageSource, SelectionRange, layout};
-use felis_render_wgpu::{MouseState, Renderer, RendererConfig, SurfaceError, TrailState};
+use felis_render_wgpu::{
+    FontFilesMode, MouseState, Renderer, RendererConfig, SurfaceError, TrailState,
+};
 use tokio::runtime::Runtime;
 use winit::dpi::{PhysicalPosition, PhysicalSize};
 use winit::event::{ElementState, Ime, MouseScrollDelta, WindowEvent};
@@ -162,6 +164,8 @@ impl Terminal {
         let size = window.inner_size();
         let config = RendererConfig {
             font_size_physical_px: Some(physical(&window, settings::font_size(settings))),
+            font_files: crate::fonts::files(),
+            font_files_mode: FontFilesMode::BeforeSystem,
             ..settings::made(&drawn)
         };
         let colors = settings::reported_colors(&config);

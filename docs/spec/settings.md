@@ -34,6 +34,14 @@ default.
 Programs that ask the terminal for its colours are told the colours the
 settings and the theme give.
 
+## The font
+
+Cattery ships a fixed-width font, JetBrains Mono Nerd Font Mono, which
+carries the icons shell prompts draw. A grid is drawn with it unless the
+settings name another family, and a family the settings name is looked for
+among the faces Cattery ships before the system's. What the faces in use
+lack, Japanese among it, is drawn with the system's fonts.
+
 ## Themes
 
 Cattery's colours come from a theme: one for a light appearance, one for a
