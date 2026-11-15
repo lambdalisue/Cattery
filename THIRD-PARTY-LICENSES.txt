@@ -5366,9 +5366,9 @@ Apache License 2.0 (Apache-2.0)
 Used by:
   - font-types 0.12.7 (https://github.com/googlefonts/fontations)
   - read-fonts 0.41.0 (https://github.com/googlefonts/fontations)
-  - read-fonts 0.46.0 (https://github.com/googlefonts/fontations)
+  - read-fonts 0.47.0 (https://github.com/googlefonts/fontations)
   - skrifa 0.44.0 (https://github.com/googlefonts/fontations)
-  - skrifa 0.49.0 (https://github.com/googlefonts/fontations)
+  - skrifa 0.50.0 (https://github.com/googlefonts/fontations)
 
 Apache License
 
@@ -6006,16 +6006,16 @@ limitations under the License.
 Apache License 2.0 (Apache-2.0)
 
 Used by:
-  - felis-client-core 0.3.0 (https://github.com/felis-terminal/felis)
-  - felis-daemon 0.4.1 (https://github.com/felis-terminal/felis)
-  - felis-grid 0.3.0 (https://github.com/felis-terminal/felis)
-  - felis-protocol 0.2.0 (https://github.com/felis-terminal/felis)
-  - felis-pty 0.1.2 (https://github.com/felis-terminal/felis)
-  - felis-render-core 0.3.0 (https://github.com/felis-terminal/felis)
-  - felis-render-wgpu 0.3.0 (https://github.com/felis-terminal/felis)
-  - felis-shaping 0.2.0 (https://github.com/felis-terminal/felis)
-  - felis-transport 0.2.0 (https://github.com/felis-terminal/felis)
-  - felis-vt 0.2.0 (https://github.com/felis-terminal/felis)
+  - felis-client-core 0.4.0 (https://github.com/felis-terminal/felis)
+  - felis-daemon 0.5.1 (https://github.com/felis-terminal/felis)
+  - felis-grid 0.4.0 (https://github.com/felis-terminal/felis)
+  - felis-protocol 0.3.0 (https://github.com/felis-terminal/felis)
+  - felis-pty 0.2.0 (https://github.com/felis-terminal/felis)
+  - felis-render-core 0.4.0 (https://github.com/felis-terminal/felis)
+  - felis-render-wgpu 0.4.0 (https://github.com/felis-terminal/felis)
+  - felis-shaping 0.3.0 (https://github.com/felis-terminal/felis)
+  - felis-transport 0.3.0 (https://github.com/felis-terminal/felis)
+  - felis-vt 0.3.0 (https://github.com/felis-terminal/felis)
   - ab_glyph 0.2.32 (https://github.com/alexheretic/ab-glyph)
   - ab_glyph_rasterizer 0.1.10 (https://github.com/alexheretic/ab-glyph)
   - accesskit 0.25.2 (https://github.com/AccessKit/accesskit)
@@ -7457,7 +7457,7 @@ MIT License (MIT)
 
 Used by:
   - harfrust 0.12.0 (https://github.com/harfbuzz/harfrust)
-  - harfrust 0.15.0 (https://github.com/harfbuzz/harfrust)
+  - harfrust 0.16.0 (https://github.com/harfbuzz/harfrust)
 
 The MIT License (MIT)
 

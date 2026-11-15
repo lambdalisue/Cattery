@@ -194,34 +194,7 @@ fn bar(at: vec2<f32>, window: vec2<f32>, background: vec4<f32>) -> vec4<f32> {
     return mix(fill, vec4<f32>(ink.rgb, max(fill.a, ink.a)), coverage);
 }
 
-// Whether the surface's translucent colours are premultiplied for a
-// compositor that blends them as the surface stores them, sRGB-encoded, as
-// macOS's does.
-override encoded_alpha: bool = false;
-
 @fragment
 fn fs_post(@location(0) uv: vec2<f32>) -> @location(0) vec4<f32> {
-    let colour = shade(uv);
-    if !encoded_alpha || colour.a <= 0.0 || colour.a >= 1.0 {
-        return colour;
-    }
-    // felis premultiplies in linear light, and the surface encodes the
-    // product to sRGB, which brightens it: the compositor, blending the
-    // encoded values, then draws a light translucent background lighter
-    // than it is, white over anything light. Premultiplying the encoded
-    // colour instead gives the compositor what it blends.
-    let straight = colour.rgb / colour.a;
-    return vec4<f32>(decode(encode(straight) * colour.a), colour.a);
-}
-
-fn encode(linear: vec3<f32>) -> vec3<f32> {
-    let low = linear * 12.92;
-    let high = 1.055 * pow(max(linear, vec3<f32>(0.0)), vec3<f32>(1.0 / 2.4)) - 0.055;
-    return select(high, low, linear <= vec3<f32>(0.0031308));
-}
-
-fn decode(encoded: vec3<f32>) -> vec3<f32> {
-    let low = encoded / 12.92;
-    let high = pow((max(encoded, vec3<f32>(0.0)) + 0.055) / 1.055, vec3<f32>(2.4));
-    return select(high, low, encoded <= vec3<f32>(0.04045));
+    return shade(uv);
 }
