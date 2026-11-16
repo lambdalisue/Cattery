@@ -42,6 +42,10 @@ settings name another family, and a family the settings name is looked for
 among the faces Cattery ships before the system's. What the faces in use
 lack, Japanese among it, is drawn with the system's fonts.
 
+On macOS, a character the font and the fallbacks the settings name lack is
+looked for in Hiragino Sans before the system picks a face for it, so Han
+characters are drawn with Japanese glyphs whatever the preferred language.
+
 ## Themes
 
 Cattery's colours come from a theme: one for a light appearance, one for a
