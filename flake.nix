@@ -41,13 +41,13 @@
           inherit system;
           overlays = [ (import rust-overlay) ];
         };
-      # What felis's font shaping links against on Linux.
-      linkedFor = pkgs: pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.fontconfig ];
-      # What winit and wgpu open at run time on Linux. They are absent from
-      # the binary's needed libraries, so an rpath does not find them.
+      # What winit, wgpu and felis's font lookup open at run time on Linux.
+      # They are absent from the binary's needed libraries, so an rpath does
+      # not find them.
       openedFor =
         pkgs:
         pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+          pkgs.fontconfig
           pkgs.vulkan-loader
           pkgs.libGL
           pkgs.libxkbcommon
@@ -93,7 +93,7 @@
               pkgs.pkg-config
               pkgs.makeWrapper
             ];
-            buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ] ++ linkedFor pkgs;
+            buildInputs = lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ];
             # The tests run in CI and with `just test`.
             doCheck = false;
           };
@@ -163,7 +163,6 @@
               pkgs.cargo-about
             ]
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.libiconv ]
-            ++ linkedFor pkgs
             # tic compiles the terminfo entry sessions use, which macOS has.
             ++ pkgs.lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.ncurses ];
             # So `cargo run` opens a window, as the package's wrapper does.
