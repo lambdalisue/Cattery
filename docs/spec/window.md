@@ -84,11 +84,12 @@ resize it.
 On Linux every window of Cattery's goes by the app id `cattery` (the class, on
 X11), which its desktop entry names.
 
-Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
-where the platform shows one there — is light while the light theme is in
-force and dark while the dark theme is, and changes with it. Before Cattery
-runs, macOS 26 shows it light or dark as the icon style in System Settings
-is; earlier macOS shows it light.
+Cattery's icon in the title bar and the taskbar, where the platform shows one
+there, is light while the light theme is in force and dark while the dark
+theme is, and changes with it. On macOS the app's icon is the same whether
+Cattery runs or not: macOS 26 draws it in the icon style chosen in System
+Settings, and earlier macOS shows it light. A Cattery built without Xcode
+shows it light on macOS 26 too.
 
 Find (Command-F on macOS, Control-Shift-F on Linux and Windows, or the
 menu) searches the session's history: the query is typed into a bar at the

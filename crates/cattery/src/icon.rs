@@ -1,5 +1,5 @@
-//! Cattery's icon: its windows', and on macOS the Dock's. It is drawn
-//! light and dark, to go with the theme in force.
+//! Cattery's icon: its windows', and on macOS the Dock's where no bundle
+//! gives it. It is drawn light and dark, to go with the theme in force.
 
 use anyhow::Context as _;
 use winit::window::Theme;
@@ -55,11 +55,16 @@ pub fn window(look: Theme) -> Option<winit::window::Icon> {
         .ok()
 }
 
-/// Show the icon in the Dock, which takes an app's icon from its bundle
-/// and shows a generic one for a bare executable.
+/// Show the icon in the Dock when Cattery runs outside its bundle, where
+/// the Dock would show a generic one. A bundle's icon is left to macOS,
+/// which draws it in the icon style the user chose: one set here would
+/// override that for as long as Cattery runs.
 pub fn show_in_dock(look: Theme) {
     #[cfg(target_os = "macos")]
     {
+        if bundled() {
+            return;
+        }
         use objc2::AllocAnyThread as _;
         use objc2::MainThreadMarker;
         use objc2_app_kit::{NSApplication, NSImage};
@@ -78,6 +83,29 @@ pub fn show_in_dock(look: Theme) {
     }
     #[cfg(not(target_os = "macos"))]
     let _ = look;
+}
+
+/// Whether Cattery runs as an app, from its bundle. `NSBundle` is not
+/// asked: run by a link on `PATH` it finds no bundle, while the Dock
+/// follows the link and shows the app.
+#[cfg(target_os = "macos")]
+fn bundled() -> bool {
+    std::env::current_exe()
+        .and_then(std::fs::canonicalize)
+        .is_ok_and(|executable| in_bundle(&executable))
+}
+
+/// Whether `executable`, with no link left in it, is an app bundle's.
+#[cfg(target_os = "macos")]
+fn in_bundle(executable: &std::path::Path) -> bool {
+    executable.parent().is_some_and(|folder| {
+        folder.ends_with("Contents/MacOS")
+            && folder
+                .ancestors()
+                .nth(2)
+                .and_then(|app| app.extension())
+                .is_some_and(|extension| extension == "app")
+    })
 }
 
 /// Have the menu bar and the Dock name the app Cattery when it runs outside
@@ -168,6 +196,25 @@ mod tests {
             assert_eq!(pixel(large(look), 32, 256)[3], 0, "{look:?}");
             assert_eq!(pixel(small(look), 4, 32)[3], 255, "{look:?}");
         }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn an_app_s_executable_is_in_its_bundle_and_a_bare_one_is_in_none() {
+        for (executable, expected) in [
+            ("/Applications/Cattery.app/Contents/MacOS/cattery", true),
+            ("/opt/homebrew/bin/cattery", false),
+            ("/src/cattery/target/debug/cattery", false),
+            ("/src/Cattery.app/target/debug/cattery", false),
+            ("/src/Contents/MacOS/cattery", false),
+        ] {
+            assert_eq!(
+                in_bundle(std::path::Path::new(executable)),
+                expected,
+                "{executable}"
+            );
+        }
+        assert!(!bundled());
     }
 
     #[test]

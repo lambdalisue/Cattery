@@ -15,8 +15,7 @@ mkdir -p "$contents/MacOS" "$contents/Resources"
 install -m755 "$executable" "$contents/MacOS/cattery"
 perl -pe "s/\@VERSION\@/$version/g" "$root/assets/macos/Info.plist" >"$contents/Info.plist"
 
-# macOS before 26 shows the icns, the light drawing; the Dock shows the one
-# for the theme in force once Cattery runs.
+# macOS before 26 shows the icns, the light drawing.
 icons=$(mktemp -d)
 trap 'rm -rf "$icons"' EXIT
 for size in 128 256 512 1024; do
@@ -26,7 +25,7 @@ perl "$root/scripts/icns.pl" "$contents/Resources/cattery.icns" \
   ic07="$icons/128.png" ic08="$icons/256.png" ic09="$icons/512.png" ic10="$icons/1024.png"
 
 # macOS 26 draws the icon from the Icon Composer document instead, light or
-# dark as the icon style is, before Cattery runs too. Only Xcode's actool
+# dark as the icon style is. Only Xcode's actool
 # compiles it, so a bundle made without Xcode, as Nix makes it, keeps the
 # icns alone. The icns stays the one macOS before 26 shows: the one actool
 # writes too, whatever it is told, is drawn in macOS 26's style.

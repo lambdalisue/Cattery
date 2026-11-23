@@ -34,3 +34,16 @@ targets = [
 # Neither is in what a release ships.
 ignore-dev-dependencies = true
 ignore-build-dependencies = true
+
+# rfd carries a second MIT licence, for code it took from elsewhere. Left to
+# itself, cargo-about keeps whichever of the two the file system lists first.
+[rfd.clarify]
+license = "MIT"
+
+[[rfd.clarify.files]]
+path = "LICENSE"
+checksum = "65fc947f4bac882a2cd104ef73c246b1b037059df9f2b3a58b7f77f0b9e56071"
+
+[[rfd.clarify.files]]
+path = "src/backend/xdg_desktop_portal/window_identifier/LICENSE"
+checksum = "ae26bc7b1bc91fb8648f6a298decbb1a77090a56c9d04e2c23b8365e5f54acb5"
