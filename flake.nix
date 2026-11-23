@@ -124,9 +124,30 @@
                   # The executable on PATH is the app's, so a daemon it
                   # starts is the same build as the app's windows.
                   ln -sf "$app/MacOS/cattery" "$out/bin/cattery"
+                ''
+                + lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
+                  icons="$out/share/icons/hicolor"
+                  install -Dm644 assets/logo/cattery-icon-dark-512.png "$icons/512x512/apps/cattery.png"
+                  install -Dm644 assets/logo/cattery-icon-dark.svg "$icons/scalable/apps/cattery.svg"
                 '';
+                desktopItems = lib.optionals pkgs.stdenv.hostPlatform.isLinux [
+                  (pkgs.makeDesktopItem {
+                    name = "cattery";
+                    desktopName = "Cattery";
+                    exec = "cattery";
+                    icon = "cattery";
+                    categories = [
+                      "System"
+                      "TerminalEmulator"
+                    ];
+                    # The app id in crates/cattery/src/identity.rs.
+                    startupWMClass = "cattery";
+                  })
+                ];
                 nativeBuildInputs =
-                  build.nativeBuildInputs ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.resvg ];
+                  build.nativeBuildInputs
+                  ++ lib.optionals pkgs.stdenv.hostPlatform.isDarwin [ pkgs.resvg ]
+                  ++ lib.optionals pkgs.stdenv.hostPlatform.isLinux [ pkgs.copyDesktopItems ];
                 postFixup = lib.optionalString pkgs.stdenv.hostPlatform.isLinux ''
                   wrapProgram "$out/bin/cattery" \
                     --prefix LD_LIBRARY_PATH : "${lib.makeLibraryPath (openedFor pkgs)}" \
