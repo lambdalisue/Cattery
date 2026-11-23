@@ -17,6 +17,7 @@ pub mod fonts;
 pub mod fuzzy;
 pub mod grid;
 pub mod icon;
+pub mod identity;
 pub mod inserted;
 pub mod integration;
 pub mod keymap;

@@ -41,7 +41,9 @@ use crate::search::{self, Search, Step};
 use crate::select::{self, Clicks, Paste};
 use crate::session::Link;
 use crate::settings::{self, Changes, Zoom};
-use crate::{blur, chrome, clipboard, daemon, grid, icon, inserted, links, mouse, session, title};
+use crate::{
+    blur, chrome, clipboard, daemon, grid, icon, identity, inserted, links, mouse, session, title,
+};
 
 /// Which session a window opens on.
 #[derive(Debug, Clone, Copy)]
@@ -154,12 +156,12 @@ impl Terminal {
         let drawn = settings::look(settings);
         let translucent = drawn.theme.background_opacity.is_some();
         let window = Arc::new(
-            event_loop.create_window(chrome::under_title_bar(
+            event_loop.create_window(identity::named(chrome::under_title_bar(
                 Window::default_attributes()
                     .with_title("Cattery")
                     .with_window_icon(icon::window(look))
                     .with_transparent(true),
-            ))?,
+            )))?,
         );
         let size = window.inner_size();
         let config = RendererConfig {

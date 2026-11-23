@@ -81,6 +81,9 @@ bar's place on Windows. The rest of the title bar moves the window, and a
 double click on it maximizes the window or puts it back; the window's edges
 resize it.
 
+On Linux every window of Cattery's goes by the app id `cattery` (the class, on
+X11), which its desktop entry names.
+
 Cattery's icon — in the Dock on macOS, and in the title bar and the taskbar
 where the platform shows one there — is light while the light theme is in
 force and dark while the dark theme is, and changes with it. Before Cattery
