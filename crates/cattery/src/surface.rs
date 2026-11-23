@@ -12,7 +12,7 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowAttributes, WindowId};
 
-use crate::look;
+use crate::{identity, look};
 
 pub struct Surface {
     window: Arc<Window>,
@@ -28,7 +28,7 @@ impl Surface {
         runtime: &Runtime,
         attributes: WindowAttributes,
     ) -> anyhow::Result<Self> {
-        let window = Arc::new(event_loop.create_window(attributes)?);
+        let window = Arc::new(event_loop.create_window(identity::named(attributes))?);
         let context = egui::Context::default();
         look::install(&context);
         // felis's renderer keeps its device to itself, so egui has one of
